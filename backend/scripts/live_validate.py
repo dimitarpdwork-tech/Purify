@@ -134,7 +134,7 @@ async def _evaluate_site(row: dict, fetcher: SafeFetcher, renderer, sem: asyncio
                               "prebid": [{"global": p.get("global"), "version": p.get("version"), "bidders": p.get("configured_bidders"),
                                           "requested": p.get("requested_bidders")} for p in (x.page.get("prebid") or [])],
                               "gpt_slots": len(((x.page.get("gpt") or {}).get("slots")) or []),
-                              "consent": x.page.get("consent")} for x in rr]
+                              "consent": x.page.get("consent"), "consent_action": x.page.get("consent_action")} for x in rr]
             if cls.primary_category == "UNKNOWN" and any(x.ok and x.html for x in rr):
                 fs = [feat.extract_safe(x.html, x.final_url or x.url) for x in rr if x.ok and x.html]
                 c2 = rules.classify(w.host, fs)
@@ -172,6 +172,7 @@ def write_report(outdir: Path, infra: list[dict], results: list[dict], rendered:
     pub_fn = sum(1 for r in results if r["classification"]["is_publisher"] is False and r["expected_is_publisher"])
     unknown = sum(1 for r in results if r["classification"]["category"] == "UNKNOWN")
     errors = [r["host"] for r in results if r.get("error")]
+    clicked = [r["host"] for r in results if any((x.get("consent_action") or {}).get("clicked") for x in (r.get("render") or []))]
     gated = [r["host"] for r in results if any(((r.get("adtech") or {}).get(k) or {}).get("status") == "SCAN_INCONCLUSIVE"
                                                and "consent" in json.dumps((r.get("adtech") or {}).get(k)) for k in ("google_gam",))]
     static_fail = Counter((r["static"]["problem"] or "ok")[:60] for r in results)
@@ -195,7 +196,8 @@ def write_report(outdir: Path, infra: list[dict], results: list[dict], rendered:
               f"- publisher precision: {pub_tp}/{pub_tp + pub_fp} ; publisher misses (classified non-publisher): {pub_fn}",
               f"- UNKNOWN (no usable content - blocked/challenge/failed): {unknown}",
               f"- script errors (bugs - please report): {len(errors)} {errors}",
-              f"- ad-tech inconclusive because of cookie-consent walls: {len(gated)} {gated}", "",
+              f"- ad-tech inconclusive because of cookie-consent walls: {len(gated)} {gated}",
+              f"- cookie banner accepted by the robot: {len(clicked)} {clicked}", "",
               "| host | expected | got | conf | rescue (rendered) | static problem |", "|---|---|---|---|---|---|"]
     for r in sorted(results, key=lambda r: r["host"]):
         ok = r in correct

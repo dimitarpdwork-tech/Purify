@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     playwright_timeout_ms: int = 25_000
     playwright_settle_ms: int = 6_000
     playwright_concurrency: int = 2
+    # "accept": click "Accept" on cookie-consent banners in the robot's own browser so EU ad stacks load
+    # (recorded in evidence). "observe": never click; consent-walled pages become SCAN_INCONCLUSIVE.
+    consent_mode: str = "accept"
     chromium_executable: str | None = None  # use a system/preinstalled Chromium instead of Playwright's download
     stage_lease_seconds: int = 900
     stage_max_attempts: int = 3

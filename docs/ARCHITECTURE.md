@@ -101,4 +101,5 @@ showing no Prebid, APS or OpenWrap.
   - robots.txt is respected, using our User-Agent.
   - There is a per-host minimum interval and a global concurrency cap.
   - Anti-bot challenges, CAPTCHAs, logins and paywalls are detected and reported. They are never bypassed.
+  - Cookie-consent banners (EU) are a separate case. With `CONSENT_MODE=accept` (the default, chosen by Purify) the robot clicks "Accept" in its own throwaway browser context, so the ad stack an EU visitor sees can load. It uses known CMP buttons (OneTrust, Sourcepoint, Didomi, Cookiebot, Usercentrics, Quantcast, Funding Choices, TrustArc…) or a multilingual "accept" text match. It never clicks subscribe, paid or "ad-free" options. Every detection records `observed after the robot accepted the cookie banner (CMP)`. With `CONSENT_MODE=observe`, consent-walled pages are reported `SCAN_INCONCLUSIVE`.
 - **Users and audit:** JWT auth with roles (viewer < analyst < admin). Mutations are audited, and secrets are server-side only.

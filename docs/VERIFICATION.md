@@ -78,6 +78,8 @@ A second live run (10 news sites) showed:
   - **Cookie walls caused false "no ads":** spiegel.de and theguardian.com had 15–19 empty ad containers and no ad calls, because ads were waiting for cookie consent. The renderer now records consent state (CMP globals, visible banners, TCF `gdprApplies` / purpose-1 consent). When every rendered page is consent-gated, key vendors are reported as `SCAN_INCONCLUSIVE` ("ads likely waiting for cookie consent"), never `NOT_OBSERVED`.
   - **theguardian.com was labelled LIFESTYLE:** its menu links to many lifestyle sections. Topic hits are now capped, and a site with news schema that covers several topic areas is classified as news.
 
+- **Follow-up, decided by Purify:** a consent-wall "inconclusive" makes most EU sites unverifiable, so the robot now accepts cookie banners by default (`CONSENT_MODE=accept`). Tested on local fixtures with real Chromium: it clicks "Akzeptieren und weiter" and not the "PUR-Abo" subscription button, and it handles a Sourcepoint-style iframe. **PENDING LIVE re-run.**
+
 What did work in the first run:
 
 - bbc.com was classified as `NEWS_PUBLISHER` and its ads.txt was found.

@@ -649,7 +649,7 @@ def get_settings_ep(user: User = Depends(viewer)):
     return {"settings": all_settings(), "environment": {
         "playwright_enabled": s.playwright_enabled, "respect_robots_txt": s.respect_robots_txt, "user_agent": s.user_agent,
         "per_host_min_interval_seconds": s.per_host_min_interval_seconds, "playwright_concurrency": s.playwright_concurrency,
-        "sellers_json_sources": s.sellers_json_source_list,
+        "sellers_json_sources": s.sellers_json_source_list, "consent_mode": s.consent_mode,
         "not_in_this_build": ["traffic estimates (researched manually)", "HTTP Archive / BigQuery discovery", "contact discovery"]}}
 
 

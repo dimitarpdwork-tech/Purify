@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -113,6 +114,72 @@ async (GLOBALS) => {
   return out;
 }
 """
+
+
+# ---- cookie-consent acceptance (CONSENT_MODE=accept) ------------------------------------------
+# In the EU most ad-supported sites load no ads until "Accept" is clicked. To observe the ad stack a
+# normal visitor sees, the renderer can accept the banner in its own throwaway browser context.
+# It never clicks subscribe / paid / "ad-free" options and records exactly what it clicked.
+CONSENT_SELECTORS = [
+    "#onetrust-accept-btn-handler",                                  # OneTrust
+    "button.sp_choice_type_11",                                      # Sourcepoint (iframe): "accept all"
+    "#didomi-notice-agree-button",                                   # Didomi
+    "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll",        # Cookiebot
+    "#CybotCookiebotDialogBodyButtonAccept",
+    "[data-testid='uc-accept-all-button']",                          # Usercentrics (open shadow DOM)
+    ".qc-cmp2-summary-buttons button[mode='primary']",               # Quantcast
+    "button.fc-cta-consent",                                         # Google Funding Choices
+    "#truste-consent-button",                                        # TrustArc
+    "#cmpbntyestxt", "a.cmpboxbtnyes",                               # consentmanager.net
+    "button[data-cookiebanner='accept_button']",
+    ".iubenda-cs-accept-btn",                                        # iubenda
+    "#axeptio_btn_acceptAll",                                        # Axeptio
+]
+ACCEPT_TEXT_RE = re.compile(
+    r"^\s*(accept( all| all cookies| cookies| and continue| & continue)?|i accept|agree|i agree|agree( and| &) (continue|close)|allow all( cookies)?|"
+    r"alle akzeptieren|akzeptieren( und weiter| & weiter)?|zustimmen( und weiter)?|einverstanden|alle annehmen|"
+    r"tout accepter|accepter( et continuer| et fermer)?|j'accepte|"
+    r"aceptar( todo| todas| y continuar)?|acepto|accetta( tutto| e continua)?|accetto|"
+    r"aceitar( tudo| todos)?|zaakceptuj( wszystkie)?|akceptuj(ę)?|alles accepteren|accepteren|akkoord|"
+    r"godkänn( alla)?|acceptera( alla)?|accepter alle|tillad alle|godta( alle)?|hyväksy( kaikki)?|"
+    r"приемам|приемам всички|приеми( всички)?|съгласен|съгласна|принять( все)?|согласен|прийняти|"
+    r"kabul et|tümünü kabul et|elfogadom|összes elfogadása|souhlasím|přijmout vše|súhlasím|prijať všetko|"
+    r"sutinku|piekrītu|nõustun|prihvati( sve)?|прихвати|sprejmi vse|αποδοχή( όλων)?|accept toate|sunt de acord|"
+    r"ok|got it)\s*[.!]?\s*$", re.I)
+AVOID_TEXT_RE = re.compile(r"(abo|subscri|pur\b|ad-?free|werbefrei|sans pub|€|\$|pay|login|sign in|anmelden|register)", re.I)
+
+
+async def accept_consent(page) -> dict:
+    """Try to accept a cookie-consent banner. Returns a record of what happened."""
+    out: dict = {"mode": "accept", "clicked": None}
+    frames = [page.main_frame] + [f for f in page.frames if f is not page.main_frame]
+    for frame in frames:
+        for sel in CONSENT_SELECTORS:
+            try:
+                loc = frame.locator(sel).first
+                if await loc.count() and await loc.is_visible():
+                    txt = (await loc.inner_text(timeout=1000)).strip()[:60]
+                    if AVOID_TEXT_RE.search(txt):
+                        continue
+                    await loc.click(timeout=3000)
+                    out.update(clicked=sel, text=txt, frame=(frame.url or "")[:200])
+                    return out
+            except Exception:  # noqa: BLE001 - detached frames, timeouts
+                continue
+    for frame in frames:
+        try:
+            buttons = frame.get_by_role("button", name=ACCEPT_TEXT_RE)
+            for i in range(min(await buttons.count(), 6)):
+                b = buttons.nth(i)
+                txt = (await b.inner_text(timeout=1000)).strip()
+                if len(txt) > 40 or AVOID_TEXT_RE.search(txt) or not await b.is_visible():
+                    continue
+                await b.click(timeout=3000)
+                out.update(clicked="text-match", text=txt[:60], frame=(frame.url or "")[:200])
+                return out
+        except Exception:  # noqa: BLE001
+            continue
+    return out
 
 
 @dataclass
@@ -223,13 +290,23 @@ class Renderer:
             resp = await page.goto(url, wait_until="domcontentloaded")
             res.status = resp.status if resp else None
             res.final_url = page.url
-            # let ad stacks initialise, then scroll a few screens to trigger lazy-loaded slots
+            # let the page (and any consent banner) initialise
             await page.wait_for_timeout(self.s.playwright_settle_ms // 2)
+            consent_action = {"mode": self.s.consent_mode, "clicked": None}
+            if self.s.consent_mode == "accept":
+                consent_action = await accept_consent(page)
+                if consent_action.get("clicked"):
+                    # ad stacks start after consent: give them time
+                    await page.wait_for_timeout(self.s.playwright_settle_ms // 2)
+            # scroll a few screens to trigger lazy-loaded slots
             for _ in range(4):
                 await page.mouse.wheel(0, 900)
                 await page.wait_for_timeout(600)
             await page.wait_for_timeout(self.s.playwright_settle_ms // 2)
             data = await page.evaluate(_PAGE_SCRIPT, reg.all_globals())
+            data["consent_action"] = consent_action
+            if consent_action.get("clicked") and data.get("consent"):
+                data["consent"]["accepted_by_robot"] = True
             res.page = data
             res.html = (await page.content())[: self.s.http_max_bytes]
             title = (data.get("title") or "").lower()

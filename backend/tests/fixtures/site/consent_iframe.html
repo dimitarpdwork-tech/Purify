@@ -1,0 +1,14 @@
+<!doctype html><html lang="en"><head><title>Fixture Daily - News</title>
+<!-- TEST FIXTURE: Sourcepoint-style consent message rendered inside an iframe. -->
+<script>
+window._consent = false;
+window.__tcfapi = function(cmd, ver, cb){ if (cmd === 'getTCData') cb({gdprApplies: true, cmpStatus: 'loaded', cmpId: 6,
+  purpose: {consents: window._consent ? {'1': true} : {}}}, true); };
+window._sp_ = {config: {}};
+function loadAds(){ window._consent = true; document.getElementById('sp_message_iframe_1').remove();
+  window.pbjs = {version: 'v9.1.0-fixture', adUnits: [{code:'a', bids:[{bidder:'pubmatic'}]}], getEvents: function(){ return []; }}; }
+</script></head><body>
+<iframe id="sp_message_iframe_1" style="position:fixed;inset:0;width:100%;height:100%;border:0;z-index:9"
+  srcdoc="<html><body><p>We value your privacy</p><button class='sp_choice_type_12'>Settings</button><button class='sp_choice_type_11' onclick='parent.loadAds()'>Accept all</button></body></html>"></iframe>
+<article><p>News text</p></article>
+</body></html>

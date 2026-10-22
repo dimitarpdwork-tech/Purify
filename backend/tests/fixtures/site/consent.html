@@ -1,10 +1,24 @@
 <!doctype html><html lang="de"><head><title>Fixture Zeitung - Nachrichten</title>
-<!-- TEST FIXTURE: imitates a TCF CMP waiting for consent (GDPR applies, no purpose-1 consent). No ads load. -->
+<!-- TEST FIXTURE: imitates a TCF CMP. No ads until "Akzeptieren" is clicked; then a stub GPT "loads". -->
 <script>
-window.__tcfapi = function(cmd, ver, cb){ if (cmd === 'getTCData') cb({gdprApplies: true, cmpStatus: 'loaded', eventStatus: 'cmpuishown', cmpId: 6, purpose: {consents: {}}}, true); };
+window._consent = false;
+window.__tcfapi = function(cmd, ver, cb){ if (cmd === 'getTCData') cb({gdprApplies: true, cmpStatus: 'loaded',
+  eventStatus: window._consent ? 'useractioncomplete' : 'cmpuishown', cmpId: 6, purpose: {consents: window._consent ? {'1': true} : {}}}, true); };
 window._sp_ = {config: {}};
+function loadAds(){
+  window._consent = true;
+  var b = document.getElementById('sp_message_container_1'); if (b) b.remove();
+  function Slot(p,d){ this.p=p; this.d=d; }
+  Slot.prototype.getAdUnitPath=function(){return this.p}; Slot.prototype.getSlotElementId=function(){return this.d};
+  Slot.prototype.getSizes=function(){return [{getWidth:function(){return 728},getHeight:function(){return 90}}]};
+  window.googletag = {pubadsReady: true, apiReady: true, pubads: function(){ return {getSlots: function(){ return [new Slot('/999/zeitung/top','top')]; }}; }};
+  fetch('/gampad/ads?iu=/999/zeitung/top').catch(function(){});
+}
+window.acceptAllFromIframe = loadAds;
 </script></head><body>
-<div id="sp_message_container_1" style="position:fixed;inset:0;background:#fff;z-index:9">Wir brauchen Ihre Zustimmung <button>Akzeptieren</button></div>
-<div class="ad-container" style="width:728px;height:90px"></div>
+<div id="sp_message_container_1" style="position:fixed;inset:0;background:#fff;z-index:9">Wir brauchen Ihre Zustimmung
+  <button onclick="alert('should never be clicked')">Werbefrei lesen mit PUR-Abo</button>
+  <button onclick="loadAds()">Akzeptieren und weiter</button></div>
+<div id="top" class="ad-container" style="width:728px;height:90px"></div>
 <article><p>Text</p><div class="ad-slot" style="width:300px;height:250px"></div></article>
 </body></html>

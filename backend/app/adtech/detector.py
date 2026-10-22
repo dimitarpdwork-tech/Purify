@@ -191,6 +191,13 @@ def detect(
             _add(declared, vk, Evidence("ads_txt", f"DIRECT={len(rel['DIRECT'])} RESELLER={len(rel['RESELLER'])}", None, "DECLARED"))
             details.setdefault(vk, {})["ads_txt"] = {"direct_accounts": sorted(rel["DIRECT"])[:20], "reseller_accounts": sorted(rel["RESELLER"])[:20]}
 
+    # ---- consent context (EU cookie walls)
+    accepted = [p for p in ok_rendered if (p.consent or {}).get("accepted_by_robot")]
+    consent_note = None
+    if accepted:
+        cmps = sorted({c for p in accepted for c in ((p.consent or {}).get("cmps") or [])})
+        consent_note = f"observed after the robot accepted the cookie banner ({', '.join(cmps) or 'CMP'})"
+
     # ---- resolve statuses
     results: list[VendorResult] = []
     for v in reg.vendors:
@@ -206,6 +213,10 @@ def detect(
             results.append(VendorResult(v.key, v.name, v.category, DECLARED, 0.5, dcl, detail))
         elif v.key in KEY_VENDORS:
             results.append(_absence(v, ok_static, ok_rendered, ads_ok, pages))
+    if consent_note:
+        for r in results:
+            if r.status in (ACTIVE, NOT_OBSERVED) and r.category not in ("cms", "analytics", "forum_software", "ecommerce_platform"):
+                r.detail = {**r.detail, "consent": consent_note}
     return results
 
 
