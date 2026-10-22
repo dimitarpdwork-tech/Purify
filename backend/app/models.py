@@ -153,6 +153,7 @@ class StageStatus(Base):
 
 
 Index("ix_stage_claim", StageStatus.stage, StageStatus.status, StageStatus.priority.desc())
+Index("ix_stage_status_stage_updated", StageStatus.stage, StageStatus.updated_at)
 
 
 class Job(Base):

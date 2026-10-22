@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ActivityLight } from "@/components/progress";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "./auth";
@@ -85,6 +86,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </button>
           <div className="hidden text-xs text-muted md:block">{NAV.find((n) => active(n.href))?.label}</div>
           <div className="flex items-center gap-2 text-sm">
+            {user && <ActivityLight />}
             <ThemeToggle />
             {user && (
               <span className="flex items-center gap-1.5 text-muted">

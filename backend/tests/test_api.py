@@ -122,3 +122,24 @@ def test_job_resumes_from_checkpoint(clean_db, tmp_path):
 def test_supply_search_requires_param(client):
     h = login(client)
     assert client.get("/api/supply/search", headers=h).status_code == 400
+
+
+def test_pipeline_progress(client):
+    h = login(client)
+    r = client.get("/api/pipeline/progress", headers=h).json()
+    assert r["health"]["state"] == "idle" and r["remaining"] == 0
+    client.post("/api/websites", headers=h, json={"domains": ["example.com", "example.org"]})
+    r = client.get("/api/pipeline/progress", headers=h).json()
+    q = next(s for s in r["stages"] if s["stage"] == "qualify")
+    assert q["pending"] == 2 and r["remaining"] == 2
+    # work waiting but nothing ever finished -> flagged as possibly stalled (workers not running in this test)
+    assert r["health"]["state"] == "stalled"
+    from app.pipeline.claims import claim
+    from app.pipeline.stages import run_qualify
+
+    run_qualify(claim("qualify", 10))
+    r = client.get("/api/pipeline/progress", headers=h).json()
+    q = next(s for s in r["stages"] if s["stage"] == "qualify")
+    assert q["done"] == 2 and q["rate_per_hour"] >= 2
+    assert r["health"]["state"] == "working"
+    assert {x["host"] for x in r["recent"]} >= {"example.com", "example.org"}

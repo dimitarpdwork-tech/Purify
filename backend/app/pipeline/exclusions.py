@@ -24,7 +24,7 @@ BUILTIN_REGISTRABLE = {
 }
 # Deliberately narrow: substrings like "sex" would wrongly hit e.g. sussex/essex news sites.
 ADULT_RE = re.compile(r"(porn|xxx|xnxx|xvideos|xhamster|hentai|camgirl|onlyfans|redtube|youporn|chaturbate|stripchat|spankbang)")
-SUSPICIOUS_RE = re.compile(r"(torrent|warez|keygen|crackz)")
+SUSPICIOUS_RE = re.compile(r"(torrent|warez|keygen|crackz|1337x|piratebay|rarbg|yts\.|limetorrents|nyaa\.|fitgirl)")
 INFRA_HOST_RE = re.compile(r"^(api|cdn|static|img|images|assets|auth|login|accounts|mail|smtp|status|admin|dashboard|app|apps|my)\.")
 
 

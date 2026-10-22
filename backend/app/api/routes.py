@@ -572,6 +572,99 @@ def pipeline_status(db: Session = Depends(get_db), user: User = Depends(viewer))
     return {"stages": out, "dispatcher": get_setting("dispatcher")}
 
 
+STAGE_LABELS = {"qualify": "Filter (popularity & exclusions)", "classify": "Classify website", "supply": "Read ads.txt",
+                "adtech": "Browser ad-tech scan", "score": "Score opportunity"}
+STALL_AFTER_MIN = 10
+
+
+@api.get("/pipeline/progress")
+def pipeline_progress(db: Session = Depends(get_db), user: User = Depends(viewer)):
+    """Live processing view: is it working, per-step progress and speed, ETA, current and recent activity."""
+    from app.services.settings_store import get_setting
+
+    rows = db.execute(text("""
+        SELECT stage,
+               count(*) FILTER (WHERE status = 'PENDING')                       AS pending,
+               count(*) FILTER (WHERE status = 'RUNNING')                       AS running,
+               count(*) FILTER (WHERE status = 'DONE')                          AS done,
+               count(*) FILTER (WHERE status = 'SKIPPED')                       AS skipped,
+               count(*) FILTER (WHERE status = 'FAILED')                        AS failed,
+               count(*) FILTER (WHERE status IN ('DONE','SKIPPED','FAILED')
+                                AND updated_at > now() - interval '1 hour')     AS finished_1h,
+               count(*) FILTER (WHERE status IN ('DONE','SKIPPED','FAILED')
+                                AND updated_at > now() - interval '10 minutes') AS finished_10m,
+               max(updated_at) FILTER (WHERE status IN ('DONE','SKIPPED','FAILED')) AS last_finished
+        FROM stage_status GROUP BY stage""")).mappings().all()
+    by = {r["stage"]: r for r in rows}
+    order = ["qualify", "classify", "supply", "adtech", "score"]
+    stages, last_activity, remaining_total = [], None, 0
+    for st in order:
+        r = by.get(st)
+        if not r:
+            stages.append({"stage": st, "label": STAGE_LABELS[st], "pending": 0, "running": 0, "done": 0, "skipped": 0, "failed": 0,
+                           "rate_per_hour": 0, "eta_minutes": None})
+            continue
+        # speed: prefer the last 10 minutes (reacts quickly), fall back to the last hour
+        rate = r["finished_10m"] * 6 if r["finished_10m"] >= 3 else r["finished_1h"]
+        remaining = r["pending"] + r["running"]
+        remaining_total += remaining
+        eta = round(remaining / rate * 60) if (rate and remaining) else (0 if not remaining else None)
+        if r["last_finished"] and (last_activity is None or r["last_finished"] > last_activity):
+            last_activity = r["last_finished"]
+        stages.append({"stage": st, "label": STAGE_LABELS[st], "pending": r["pending"], "running": r["running"], "done": r["done"],
+                       "skipped": r["skipped"], "failed": r["failed"], "rate_per_hour": rate, "eta_minutes": eta})
+
+    running_jobs = db.scalars(select(Job).where(Job.status.in_(("RUNNING", "QUEUED"))).order_by(Job.id)).all()
+    for j in running_jobs:
+        if j.heartbeat_at and (last_activity is None or j.heartbeat_at > last_activity):
+            last_activity = j.heartbeat_at
+
+    paused = bool(get_setting("dispatcher").get("paused"))
+    now = dt.datetime.now(dt.timezone.utc)
+    idle_min = (now - last_activity).total_seconds() / 60 if last_activity else None
+    if paused:
+        state, msg = "paused", "Processing is paused (Settings → dispatcher)."
+    elif remaining_total == 0 and not running_jobs:
+        state, msg = "idle", "Nothing waiting. Start a discovery job or add domains to begin."
+    elif idle_min is None or idle_min > STALL_AFTER_MIN:
+        state, msg = "stalled", (f"Work is waiting but nothing finished in the last {STALL_AFTER_MIN} minutes. "
+                                 "Check that Docker is running and the laptop is awake (docker compose ps).")
+    else:
+        state, msg = "working", "Processing websites."
+
+    # the slowest remaining step decides when the batch is done
+    etas = [s["eta_minutes"] for s in stages if s["pending"] + s["running"] > 0]
+    known = [e for e in etas if e is not None]
+    overall_eta = max(known) if known else None
+    # some steps have no speed yet (nothing finished there): the estimate is a lower bound
+    eta_partial = bool(known) and len(known) < len(etas)
+
+    active = db.execute(text("""
+        SELECT w.id, w.host, s.stage, s.updated_at FROM stage_status s JOIN websites w ON w.id = s.website_id
+        WHERE s.status = 'RUNNING' ORDER BY s.updated_at DESC LIMIT 12""")).mappings().all()
+    recent = db.execute(text("""
+        SELECT w.id, w.host, s.stage, s.status, s.updated_at, w.primary_category, w.queue, w.score_total
+        FROM stage_status s JOIN websites w ON w.id = s.website_id
+        WHERE s.status IN ('DONE','SKIPPED','FAILED') AND s.updated_at > now() - interval '1 day'
+        ORDER BY s.updated_at DESC LIMIT 15""")).mappings().all()
+    return {
+        "now": now.isoformat(),
+        "health": {"state": state, "message": msg, "last_activity_at": last_activity.isoformat() if last_activity else None},
+        "remaining": remaining_total,
+        "overall_eta_minutes": overall_eta,
+        "overall_eta_partial": eta_partial,
+        "finished_last_hour": sum(by[s]["finished_1h"] for s in by if s == "score"),
+        "stages": stages,
+        "jobs": [{"id": j.id, "kind": j.kind, "status": j.status, "progress": {k: v for k, v in (j.progress or {}).items() if k != "invalid_sample"},
+                  "params": j.params, "started_at": j.started_at.isoformat() if j.started_at else None} for j in running_jobs],
+        "active": [{"id": a["id"], "host": a["host"], "stage": a["stage"], "label": STAGE_LABELS.get(a["stage"], a["stage"]),
+                    "since": a["updated_at"].isoformat()} for a in active],
+        "recent": [{"id": r["id"], "host": r["host"], "stage": r["stage"], "label": STAGE_LABELS.get(r["stage"], r["stage"]), "status": r["status"],
+                    "at": r["updated_at"].isoformat(), "category": r["primary_category"], "queue": r["queue"], "score": r["score_total"]}
+                   for r in recent],
+    }
+
+
 # ------------------------------------------------------------------ supply chain
 @api.get("/supply/search")
 def supply_search(ad_system: str | None = None, seller_id: str | None = None, relationship: str | None = None, limit: int = 200,

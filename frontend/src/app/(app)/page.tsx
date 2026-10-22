@@ -8,6 +8,7 @@ import { cruxLabel, fmtInt, fmtRelative, humanize, OPPORTUNITY_LABELS, PIPELINE_
 import { BarList } from "@/components/charts";
 import { JobStatus } from "@/components/domain";
 import { SiteTable } from "@/components/site-table";
+import { ProgressPanel } from "@/components/progress";
 import { Button, Empty, ErrorState, Loading, PageHeader, Panel, Tip } from "@/components/ui";
 
 function explorerHref(f: Record<string, unknown>) {
@@ -101,6 +102,8 @@ export default function DashboardPage() {
         </Panel>
       )}
 
+      <ProgressPanel />
+
       <Totals t={data.totals} />
 
       <div className="grid gap-3 lg:grid-cols-3">
@@ -119,7 +122,7 @@ export default function DashboardPage() {
           {crux.length ? (
             <BarList data={crux} label={(b) => cruxLabel(b)} onClickRow={(b) => router.push(explorerHref({ max_crux_bucket: Number(b) }))}
               tip={(b, v) => `${fmtInt(v)} websites whose best CrUX bucket is ${cruxLabel(b)}`} />
-          ) : <Empty title="No CrUX data">Run a CrUX ingest in Discovery.</Empty>}
+          ) : <Empty title="No global CrUX buckets yet">Only global CrUX lists fill this chart; country lists (e.g. BG) are shown on each website&apos;s profile.</Empty>}
         </Panel>
         <Panel title="Categories">
           {Object.keys(data.categories).length ? (

@@ -205,3 +205,18 @@ export interface SettingsResp { settings: Record<string, unknown>; environment: 
 export interface UserT { id: number; email: string; role: string; is_active: boolean }
 export interface ExclusionT { id: number; kind: string; pattern: string; reason: string; created_at: string }
 export interface AuditT { at: string; user_id: number | null; action: string; entity: string; entity_id: string | null; data: unknown }
+
+export interface PipelineProgress {
+  now: string;
+  health: { state: "working" | "idle" | "stalled" | "paused"; message: string; last_activity_at: string | null };
+  remaining: number;
+  overall_eta_minutes: number | null;
+  overall_eta_partial?: boolean;
+  finished_last_hour: number;
+  stages: { stage: string; label: string; pending: number; running: number; done: number; skipped: number; failed: number;
+            rate_per_hour: number; eta_minutes: number | null }[];
+  jobs: { id: number; kind: string; status: string; progress: Record<string, unknown>; params: Record<string, unknown>; started_at: string | null }[];
+  active: { id: number; host: string; stage: string; label: string; since: string }[];
+  recent: { id: number; host: string; stage: string; label: string; status: string; at: string; category: string | null;
+            queue: string | null; score: number | null }[];
+}
