@@ -76,3 +76,24 @@ def test_fetch_failure_is_unknown():
 def test_recipe_blog_topic(name, expected):
     res = classify("quickrecipes.com", [feats(name, "https://quickrecipes.com/")])
     assert res.primary_category == expected
+
+
+def test_jsonld_list_types_and_odd_values_do_not_crash():
+    """Regression (found live on bbc.com): schema.org @type given as a list, names as lists/objects."""
+    html = """<html lang="en-GB"><head><title>BBC - Home</title>
+    <script type="application/ld+json">{"@context":"https://schema.org","@graph":[
+      {"@type":["Organization","NewsMediaOrganization"],"name":["BBC"]},
+      {"@type":["WebPage"],"name":{"@value":"Home"}},
+      {"@type":[{"weird":1},"Thing"],"name":"x"},
+      {"@type":"https://schema.org/NewsArticle","headline":"h"}]}</script></head>
+    <body><nav><a href="/news">News</a><a href="/sport">Sport</a></nav></body></html>"""
+    f = extract(html, "https://www.bbc.com/")
+    assert f["org_names"] == ["BBC"]
+    assert "NewsMediaOrganization" in f["schema_types"]
+
+
+def test_extract_safe_never_raises():
+    from app.classify.features import extract_safe
+
+    out = extract_safe("<html><body>" + "<a href='http://[bad'>x</a>" * 3 + "</body></html>", "https://example.com/")
+    assert isinstance(out, dict)

@@ -238,11 +238,12 @@ def sellers_discovery(ctx: JobContext) -> None:
     done = set(ctx.checkpoint.get("done", []))
     cache = Path(get_settings().data_dir) / "datasets"
     cache.mkdir(parents=True, exist_ok=True)
-    for url in sources:
-        if url in done:
+    for entry in sources:
+        if entry in done:
             continue
+        explicit, url = get_settings().split_sellers_source(entry)
         norm, _ = try_normalize(url)
-        ad_system = norm.registrable_domain if norm else url
+        ad_system = explicit or (norm.registrable_domain if norm else url)
         dest = cache / f"sellers_{ad_system}_{dt.date.today().isoformat()}.json"
         status, count, pubs = "OK", 0, 0
         try:
@@ -277,7 +278,7 @@ def sellers_discovery(ctx: JobContext) -> None:
         with session_scope() as s:
             s.add(SellersJsonFile(ad_system_domain=ad_system, url=url, status=status[:20] if status == "OK" else "FAILED",
                                   seller_count=count, publisher_domain_count=pubs, meta={"detail": status}))
-        done.add(url)
+        done.add(entry)
         ctx.save(checkpoint={"done": sorted(done)}, **{f"sellers:{ad_system}": {"status": status, "sellers": count, "publisher_domains": pubs}})
 
 

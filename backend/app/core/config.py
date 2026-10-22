@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field
+from urllib.parse import quote
+
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +15,13 @@ class Settings(BaseSettings):
     # --- core ---
     environment: str = "development"
     database_url: str = "postgresql+psycopg://purify:purify@localhost:5432/purify"
+    # Alternative to DATABASE_URL: give the parts and the URL is built with proper escaping, so
+    # passwords may contain @ : / # ! etc. (used by docker-compose).
+    postgres_host: str | None = None
+    postgres_port: int = 5432
+    postgres_user: str = "purify"
+    postgres_password: str | None = None
+    postgres_db: str = "purify"
     redis_url: str = "redis://localhost:6379/0"
     secret_key: str = Field(default="change-me", description="JWT signing key")
     access_token_minutes: int = 60 * 12
@@ -52,7 +61,7 @@ class Settings(BaseSettings):
     tranco_list_url: str = "https://tranco-list.eu/top-1m.csv.zip"
     tranco_max_rank: int = 200_000
     sellers_json_sources: str = (
-        "https://www.google.com/sellers.json,"
+        "google.com|https://storage.googleapis.com/adx-rtb-dictionaries/sellers.json,"
         "https://pubmatic.com/sellers.json,"
         "https://cdn.indexexchange.com/sellers.json,"
         "https://openx.com/sellers.json,"
@@ -61,9 +70,25 @@ class Settings(BaseSettings):
     )
     sellers_json_max_bytes: int = 400_000_000
 
+    @model_validator(mode="after")
+    def _build_database_url(self) -> "Settings":
+        if self.postgres_host and "database_url" not in self.model_fields_set:
+            pw = quote(self.postgres_password or "", safe="")
+            self.database_url = (f"postgresql+psycopg://{quote(self.postgres_user, safe='')}:{pw}"
+                                 f"@{self.postgres_host}:{self.postgres_port}/{quote(self.postgres_db, safe='')}")
+        return self
+
     @property
     def sellers_json_source_list(self) -> list[str]:
+        """Entries are `url` or `adsystem.com|url` (when the file is hosted off the ad-system domain)."""
         return [s.strip() for s in self.sellers_json_sources.split(",") if s.strip()]
+
+    @staticmethod
+    def split_sellers_source(entry: str) -> tuple[str | None, str]:
+        if "|" in entry:
+            sys_, url = entry.split("|", 1)
+            return sys_.strip().lower(), url.strip()
+        return None, entry.strip()
 
 
 @lru_cache

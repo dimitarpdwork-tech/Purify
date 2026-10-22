@@ -94,12 +94,38 @@ def _jsonld_types(doc) -> tuple[list[str], list[dict]]:
                     types.append(t)
                     objs.append(cur)
                 elif isinstance(t, list):
-                    types.extend(str(x) for x in t)
+                    types.extend(str(x) for x in t if isinstance(x, (str, int)))
                     objs.append(cur)
                 for k in ("@graph", "mainEntity", "itemListElement", "publisher", "author", "item"):
                     if k in cur:
                         stack.append(cur[k])
     return types, objs
+
+
+def _types_of(obj: dict) -> set[str]:
+    """schema.org @type may be a string, a list of strings, or a URL - normalise to short names."""
+    t = obj.get("@type")
+    items = t if isinstance(t, list) else [t]
+    return {str(x).rsplit("/", 1)[-1] for x in items if isinstance(x, (str, int))}
+
+
+def _name(v: Any) -> str:
+    if isinstance(v, str):
+        return v.strip()
+    if isinstance(v, list) and v:
+        return _name(v[0])
+    if isinstance(v, dict):
+        return _name(v.get("@value") or v.get("name") or "")
+    return ""
+
+
+def extract_safe(html: str, url: str) -> dict[str, Any]:
+    """Like extract(), but one malformed page can never crash a batch: errors become an
+    'unparseable' feature dict (which the classifier treats as no usable content)."""
+    try:
+        return extract(html, url)
+    except Exception as exc:  # noqa: BLE001
+        return {"url": url, "unparseable": True, "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
 
 
 def extract(html: str, url: str) -> dict[str, Any]:
@@ -138,7 +164,8 @@ def extract(html: str, url: str) -> dict[str, Any]:
     types, objs = _jsonld_types(doc)
     types += [t.rsplit("/", 1)[-1] for t in doc.xpath("//@itemtype") if isinstance(t, str)]
     f["schema_types"] = sorted(set(types))[:60]
-    f["org_names"] = sorted({str(o.get("name"))[:200] for o in objs if o.get("@type") in ORG_SCHEMA | {"NewsMediaOrganization"} and o.get("name")})[:5]
+    f["org_names"] = sorted({_name(o.get("name"))[:200] for o in objs
+                             if _types_of(o) & (ORG_SCHEMA | {"NewsMediaOrganization"}) and _name(o.get("name"))})[:5]
 
     f["feed_links"] = [urljoin(url, l.get("href")) for l in doc.xpath('//link[@rel="alternate"][contains(@type,"rss") or contains(@type,"atom")]') if l.get("href")][:5]
 

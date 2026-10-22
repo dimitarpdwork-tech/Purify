@@ -149,7 +149,7 @@ async def _fetch_site_pages(fetcher: SafeFetcher, w: Website, max_pages: int) ->
     ctype = (home.content_type or "").lower()
     if not any(t in ctype for t in HTML_TYPES):
         return results, [], f"homepage is not HTML ({ctype})"
-    home_f = feat.extract(home.text(), home.final_url)
+    home_f = feat.extract_safe(home.text(), home.final_url)
     feats = [home_f]
     final_host = urlsplit(home.final_url).hostname or host
     for u in home_f.get("article_link_sample", [])[: max(0, max_pages - 1)]:
@@ -158,7 +158,7 @@ async def _fetch_site_pages(fetcher: SafeFetcher, w: Website, max_pages: int) ->
         r = await fetcher.get(u)
         results.append(r)
         if r.ok and any(t in (r.content_type or "").lower() for t in HTML_TYPES):
-            feats.append(feat.extract(r.text(), r.final_url))
+            feats.append(feat.extract_safe(r.text(), r.final_url))
     return results, feats, None
 
 
@@ -529,7 +529,7 @@ def _persist_adtech(wid: int, renders: list[Any], render_error: str | None) -> N
                                                             WebsiteClassification.is_current.is_(True)).limit(1))
         ok_renders = [r for r in renders if r.ok and r.html]
         if (cls is None or cls.primary_category == "UNKNOWN") and ok_renders:
-            fs = [feat.extract(r.html, r.final_url or r.url) for r in ok_renders]
+            fs = [feat.extract_safe(r.html, r.final_url or r.url) for r in ok_renders]
             res = rules.classify(w.host, fs)
             if res.primary_category != "UNKNOWN":
                 db.execute(update(WebsiteClassification).where(WebsiteClassification.website_id == wid).values(is_current=False))

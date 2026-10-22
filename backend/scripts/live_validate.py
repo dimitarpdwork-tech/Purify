@@ -68,14 +68,30 @@ async def infra_checks() -> list[dict]:
     lid = datasets.tranco_list_id()
     rec("Tranco list reachable", bool(lid), f"list id {lid}")
     try:
-        r = httpx.head("https://www.google.com/sellers.json", timeout=20, follow_redirects=True)
-        rec("sellers.json reachable (google.com)", r.status_code == 200, f"status={r.status_code} size={r.headers.get('content-length')}")
+        _sys, url = get_settings().split_sellers_source(get_settings().sellers_json_source_list[0])
+        r = httpx.head(url, timeout=20, follow_redirects=True)
+        rec(f"sellers.json reachable ({url})", r.status_code == 200, f"status={r.status_code} size={r.headers.get('content-length')}")
     except httpx.HTTPError as exc:
-        rec("sellers.json reachable (google.com)", False, str(exc))
+        rec("sellers.json reachable", False, str(exc))
     return out
 
 
 async def evaluate_site(row: dict, fetcher: SafeFetcher, renderer, sem: asyncio.Semaphore) -> dict:
+    """Never raises: a failure on one site is recorded in its result and the run continues."""
+    try:
+        return await _evaluate_site(row, fetcher, renderer, sem)
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+
+        print(f"  {row['host']:32s} ERROR {type(exc).__name__}: {exc}")
+        return {"host": row["host"], "expected": row["expected_category"], "expected_is_publisher": row["expected_is_publisher"] == "true",
+                "group": row["group"], "notes": row["notes"], "error": f"{type(exc).__name__}: {exc}",
+                "traceback": traceback.format_exc()[-2000:], "static": {"pages_ok": 0, "problem": f"script error: {exc}"},
+                "classification": {"category": "ERROR", "is_publisher": None, "confidence": 0}, "ads_txt": {"status": "ERROR"},
+                "adtech": {}, "summary": {"gam": None, "prebid": None}}
+
+
+async def _evaluate_site(row: dict, fetcher: SafeFetcher, renderer, sem: asyncio.Semaphore) -> dict:
     s = get_settings()
     host = row["host"]
     res: dict = {"host": host, "expected": row["expected_category"], "expected_is_publisher": row["expected_is_publisher"] == "true",
@@ -119,7 +135,7 @@ async def evaluate_site(row: dict, fetcher: SafeFetcher, renderer, sem: asyncio.
                                           "requested": p.get("requested_bidders")} for p in (x.page.get("prebid") or [])],
                               "gpt_slots": len(((x.page.get("gpt") or {}).get("slots")) or [])} for x in rr]
             if cls.primary_category == "UNKNOWN" and any(x.ok and x.html for x in rr):
-                fs = [feat.extract(x.html, x.final_url or x.url) for x in rr if x.ok and x.html]
+                fs = [feat.extract_safe(x.html, x.final_url or x.url) for x in rr if x.ok and x.html]
                 c2 = rules.classify(w.host, fs)
                 res["classification_rendered_rescue"] = {"category": c2.primary_category, "confidence": c2.confidence}
         dets = detector.detect(pages, ads_obs)
@@ -153,6 +169,7 @@ def write_report(outdir: Path, infra: list[dict], results: list[dict], rendered:
     pub_fp = sum(1 for r in results if r["classification"]["is_publisher"] and not r["expected_is_publisher"])
     pub_fn = sum(1 for r in results if r["classification"]["is_publisher"] is False and r["expected_is_publisher"])
     unknown = sum(1 for r in results if r["classification"]["category"] == "UNKNOWN")
+    errors = [r["host"] for r in results if r.get("error")]
     static_fail = Counter((r["static"]["problem"] or "ok")[:60] for r in results)
     ads = Counter(r["ads_txt"]["status"] for r in results)
     rend = Counter()
@@ -172,7 +189,8 @@ def write_report(outdir: Path, infra: list[dict], results: list[dict], rendered:
               f"- sites evaluated: {n}",
               f"- category matches expectation: {len(correct)}/{n} ({100 * len(correct) / max(n, 1):.0f}%)",
               f"- publisher precision: {pub_tp}/{pub_tp + pub_fp} ; publisher misses (classified non-publisher): {pub_fn}",
-              f"- UNKNOWN (no usable content - blocked/challenge/failed): {unknown}", "",
+              f"- UNKNOWN (no usable content - blocked/challenge/failed): {unknown}",
+              f"- script errors (bugs - please report): {len(errors)} {errors}", "",
               "| host | expected | got | conf | rescue (rendered) | static problem |", "|---|---|---|---|---|---|"]
     for r in sorted(results, key=lambda r: r["host"]):
         ok = r in correct
@@ -222,12 +240,19 @@ async def main() -> int:
             from app.adtech.render import Renderer
 
             try:
-                async with Renderer() as renderer:
-                    infra.append({"check": "headless Chromium launches", "ok": True, "detail": renderer._browser.version})
-                    results = await asyncio.gather(*(evaluate_site(r, fetcher, renderer, sem) for r in rows))
+                renderer_cm = Renderer()
+                renderer = await renderer_cm.__aenter__()
+                infra.append({"check": "headless Chromium launches", "ok": True, "detail": renderer._browser.version})
+                print(f"[PASS] headless Chromium launches: {renderer._browser.version}")
             except Exception as exc:  # noqa: BLE001
+                renderer = None
                 infra.append({"check": "headless Chromium launches", "ok": False, "detail": f"{type(exc).__name__}: {exc}"})
-                print(f"[FAIL] browser: {exc}")
+                print(f"[FAIL] headless Chromium launches: {exc}")
+            if renderer is not None:
+                try:
+                    results = await asyncio.gather(*(evaluate_site(r, fetcher, renderer, sem) for r in rows))
+                finally:
+                    await renderer_cm.__aexit__(None, None, None)
         if not results:
             results = await asyncio.gather(*(evaluate_site(r, fetcher, None, sem) for r in rows))
     write_report(outdir, infra, list(results), rendered=renderer is not None)

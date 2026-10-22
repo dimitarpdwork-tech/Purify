@@ -62,6 +62,19 @@ Each of these bugs had passed the unit tests and was caught only by the runtime 
 - **Qualify was too slow (~130 sites/s):** rewritten set-based (~535/s; 110K sites in 3.5 min).
 - **The monetization type overstated static-only evidence:** it is now labelled `*_UNCONFIRMED`.
 
+## First live run (your laptop, 2026-10-22)
+
+The infrastructure checks passed on the real internet: outbound HTTPS, robots.txt respected, the SSRF guard (metadata IP, loopback, localhost), CrUX download, and Tranco download. The live run then found three things, all fixed:
+
+- **Google's sellers.json address was wrong.** It is `storage.googleapis.com/adx-rtb-dictionaries/sellers.json` ([Google documentation](https://support.google.com/authorizedbuyers/answer/9895942)). Sources can now name their ad system (`google.com|url`) so records link to `google.com` in ads.txt.
+- **bbc.com crashed the classifier.** Its schema.org `@type` is a list. The parser now handles that, and one bad page can no longer crash a batch or the validation run.
+- **A database password containing `@` broke the connection.** The URL is now built from escaped parts.
+
+What did work:
+
+- bbc.com was classified as `NEWS_PUBLISHER` and its ads.txt was found.
+- reuters.com was reported as robots-disallowed / inconclusive (not "no ads").
+
 ## Not built or not working yet
 
 - **Traffic estimates:** removed by request. You research traffic manually; `VERIFIED_HIGH_VALUE` is reachable only through a manual override (with a reason, audited).

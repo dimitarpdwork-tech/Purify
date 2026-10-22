@@ -6,7 +6,10 @@ x-backend: &backend
   build: ./backend
   env_file: .env
   environment:
-    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-purify}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-purify}
+    # the app builds the DB URL from these parts and escapes the password (symbols are fine)
+    POSTGRES_HOST: postgres
+    POSTGRES_USER: ${POSTGRES_USER:-purify}
+    POSTGRES_DB: ${POSTGRES_DB:-purify}
     REDIS_URL: redis://redis:6379/0
     DATA_DIR: /data
   volumes:
