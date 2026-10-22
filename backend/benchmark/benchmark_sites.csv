@@ -1,0 +1,117 @@
+host,expected_category,expected_is_publisher,group,notes
+bbc.com,NEWS_PUBLISHER,true,news,
+theguardian.com,NEWS_PUBLISHER,true,news,
+reuters.com,NEWS_PUBLISHER,true,news,often blocks automated clients
+apnews.com,NEWS_PUBLISHER,true,news,
+cnn.com,NEWS_PUBLISHER,true,news,
+foxnews.com,NEWS_PUBLISHER,true,news,
+nbcnews.com,NEWS_PUBLISHER,true,news,
+independent.co.uk,NEWS_PUBLISHER,true,news,
+dailymail.co.uk,NEWS_PUBLISHER,true,news,
+spiegel.de,NEWS_PUBLISHER,true,news,
+lemonde.fr,NEWS_PUBLISHER,true,news,
+elpais.com,NEWS_PUBLISHER,true,news,
+corriere.it,NEWS_PUBLISHER,true,news,
+dnevnik.bg,NEWS_PUBLISHER,true,news,
+24chasa.bg,NEWS_PUBLISHER,true,news,
+novini.bg,NEWS_PUBLISHER,true,news,
+index.hu,NEWS_PUBLISHER,true,news,
+onet.pl,NEWS_PUBLISHER,true,news,portal
+abc.net.au,NEWS_PUBLISHER,true,news,
+timesofindia.indiatimes.com,NEWS_PUBLISHER,true,news,
+espn.com,SPORTS_PUBLISHER,true,sports,
+skysports.com,SPORTS_PUBLISHER,true,sports,
+bleacherreport.com,SPORTS_PUBLISHER,true,sports,
+marca.com,SPORTS_PUBLISHER,true,sports,
+goal.com,SPORTS_PUBLISHER,true,sports,
+sport.bg,SPORTS_PUBLISHER,true,sports,
+transfermarkt.com,SPORTS_PUBLISHER,true,sports,database-style sports site
+ign.com,GAMING_PUBLISHER,true,gaming,
+gamespot.com,GAMING_PUBLISHER,true,gaming,
+pcgamer.com,GAMING_PUBLISHER,true,gaming,
+polygon.com,GAMING_PUBLISHER,true,gaming,
+eurogamer.net,GAMING_PUBLISHER,true,gaming,
+rockpapershotgun.com,GAMING_PUBLISHER,true,gaming,
+fandom.com,ENTERTAINMENT_PUBLISHER,true,entertainment,wiki platform; category debatable
+theverge.com,TECHNOLOGY_PUBLISHER,true,tech,
+techradar.com,TECHNOLOGY_PUBLISHER,true,tech,
+arstechnica.com,TECHNOLOGY_PUBLISHER,true,tech,
+engadget.com,TECHNOLOGY_PUBLISHER,true,tech,
+tomshardware.com,TECHNOLOGY_PUBLISHER,true,tech,
+gsmarena.com,TECHNOLOGY_PUBLISHER,true,tech,
+androidauthority.com,TECHNOLOGY_PUBLISHER,true,tech,
+investing.com,FINANCE_PUBLISHER,true,finance,
+marketwatch.com,FINANCE_PUBLISHER,true,finance,
+fool.com,FINANCE_PUBLISHER,true,finance,
+investopedia.com,FINANCE_PUBLISHER,true,finance,
+businessinsider.com,FINANCE_PUBLISHER,true,finance,business news; NEWS also acceptable
+variety.com,ENTERTAINMENT_PUBLISHER,true,entertainment,
+tmz.com,ENTERTAINMENT_PUBLISHER,true,entertainment,
+people.com,ENTERTAINMENT_PUBLISHER,true,entertainment,
+screenrant.com,ENTERTAINMENT_PUBLISHER,true,entertainment,
+hollywoodreporter.com,ENTERTAINMENT_PUBLISHER,true,entertainment,
+allrecipes.com,LIFESTYLE_PUBLISHER,true,lifestyle,recipes
+seriouseats.com,LIFESTYLE_PUBLISHER,true,lifestyle,recipes
+bbcgoodfood.com,LIFESTYLE_PUBLISHER,true,lifestyle,recipes
+delish.com,LIFESTYLE_PUBLISHER,true,lifestyle,recipes
+cosmopolitan.com,LIFESTYLE_PUBLISHER,true,lifestyle,
+vogue.com,LIFESTYLE_PUBLISHER,true,lifestyle,
+healthline.com,LIFESTYLE_PUBLISHER,true,lifestyle,health
+caranddriver.com,LIFESTYLE_PUBLISHER,true,automotive,automotive publication
+motor1.com,LIFESTYLE_PUBLISHER,true,automotive,automotive publication
+lonelyplanet.com,LIFESTYLE_PUBLISHER,true,lifestyle,travel
+britannica.com,EDUCATIONAL_PUBLISHER,true,education,
+merriam-webster.com,EDUCATIONAL_PUBLISHER,true,education,dictionary
+dictionary.com,EDUCATIONAL_PUBLISHER,true,education,dictionary
+howstuffworks.com,EDUCATIONAL_PUBLISHER,true,education,
+w3schools.com,EDUCATIONAL_PUBLISHER,true,education,tutorials
+geeksforgeeks.org,EDUCATIONAL_PUBLISHER,true,education,tutorials
+stackoverflow.com,FORUM_COMMUNITY,true,forum,Q&A community
+reddit.com,FORUM_COMMUNITY,true,forum,often blocks automated clients
+quora.com,FORUM_COMMUNITY,true,forum,login walls
+xda-developers.com,TECHNOLOGY_PUBLISHER,true,tech,forum + news; FORUM also acceptable
+mumsnet.com,FORUM_COMMUNITY,true,forum,
+boards.ie,FORUM_COMMUNITY,true,forum,
+speedtest.net,CONTENT_TOOL,true,tool,
+timeanddate.com,CONTENT_TOOL,true,tool,
+calculator.net,CONTENT_TOOL,true,tool,
+ilovepdf.com,CONTENT_TOOL,true,tool,
+deepl.com,SAAS,false,saas,translator with paid plans; CONTENT_TOOL also defensible
+weather.com,NEWS_PUBLISHER,true,tool,weather publisher; CONTENT_TOOL also acceptable
+accuweather.com,NEWS_PUBLISHER,true,tool,weather publisher; CONTENT_TOOL also acceptable
+allbirds.com,ECOMMERCE,false,ecommerce,
+gymshark.com,ECOMMERCE,false,ecommerce,
+zalando.de,ECOMMERCE,false,ecommerce,
+asos.com,ECOMMERCE,false,ecommerce,
+ikea.com,ECOMMERCE,false,ecommerce,
+bestbuy.com,ECOMMERCE,false,ecommerce,
+emag.bg,ECOMMERCE,false,ecommerce,
+etsy.com,MARKETPLACE,false,marketplace,
+olx.bg,MARKETPLACE,false,marketplace,classifieds
+notion.so,SAAS,false,saas,
+asana.com,SAAS,false,saas,
+slack.com,SAAS,false,saas,large-platform exclusion list
+atlassian.com,SAAS,false,saas,
+hubspot.com,SAAS,false,saas,has a large blog: mixed
+canva.com,SAAS,false,saas,
+figma.com,SAAS,false,saas,
+siemens.com,CORPORATE,false,corporate,
+unilever.com,CORPORATE,false,corporate,
+bosch.com,CORPORATE,false,corporate,
+accenture.com,CORPORATE,false,corporate,
+deloitte.com,CORPORATE,false,corporate,
+maersk.com,CORPORATE,false,corporate,
+gov.uk,GOVERNMENT,false,government,
+usa.gov,GOVERNMENT,false,government,
+europa.eu,GOVERNMENT,false,government,
+bund.de,GOVERNMENT,false,government,
+gov.bg,GOVERNMENT,false,government,
+chase.com,CORPORATE,false,bank,transactional bank
+hsbc.co.uk,CORPORATE,false,bank,transactional bank
+dsk.bg,CORPORATE,false,bank,transactional bank
+nytimes.com,NEWS_PUBLISHER,true,news,paywall / subscription model
+wsj.com,FINANCE_PUBLISHER,true,finance,paywall
+ft.com,FINANCE_PUBLISHER,true,finance,paywall
+medium.com,GENERAL_CONTENT_PUBLISHER,true,platform,user-generated platform
+substack.com,SAAS,false,platform,newsletter platform homepage
+wordpress.org,OTHER,false,software,open-source project site (WordPress itself)

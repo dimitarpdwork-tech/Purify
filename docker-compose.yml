@@ -1,0 +1,103 @@
+# Purify Publisher Intelligence - single-host deployment (VPS).
+# Usage: cp .env.example .env && edit secrets && docker compose up -d --build
+name: purify
+
+x-backend: &backend
+  build: ./backend
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-purify}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-purify}
+    REDIS_URL: redis://redis:6379/0
+    DATA_DIR: /data
+  volumes:
+    - appdata:/data
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-purify}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-purify}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-purify}"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+    command: ["postgres", "-c", "shared_buffers=512MB", "-c", "work_mem=32MB", "-c", "max_connections=200"]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    <<: *backend
+    ports: ["127.0.0.1:8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 15s
+      retries: 10
+
+  # discovery / import / recompute jobs
+  worker-jobs:
+    <<: *backend
+    command: ["celery", "-A", "app.worker", "worker", "-Q", "jobs", "-c", "2", "-n", "jobs@%h", "--loglevel=INFO"]
+    depends_on:
+      api: {condition: service_healthy}
+
+  # qualify + score (database only)
+  worker-fast:
+    <<: *backend
+    command: ["celery", "-A", "app.worker", "worker", "-Q", "fast", "-c", "2", "-n", "fast@%h", "--loglevel=INFO"]
+    depends_on:
+      api: {condition: service_healthy}
+
+  # classify + ads.txt (HTTP; each task runs an async batch)
+  worker-fetch:
+    <<: *backend
+    command: ["celery", "-A", "app.worker", "worker", "-Q", "fetch", "-c", "4", "-n", "fetch@%h", "--loglevel=INFO"]
+    depends_on:
+      api: {condition: service_healthy}
+
+  # Playwright rendering - isolated, resource-limited
+  worker-render:
+    <<: *backend
+    command: ["celery", "-A", "app.worker", "worker", "-Q", "render", "-c", "1", "-n", "render@%h", "--loglevel=INFO",
+              "--max-tasks-per-child", "20"]
+    shm_size: "1gb"
+    deploy:
+      resources:
+        limits: {cpus: "2.0", memory: 3g}
+    depends_on:
+      api: {condition: service_healthy}
+
+  beat:
+    <<: *backend
+    command: ["celery", "-A", "app.worker", "beat", "--loglevel=INFO", "-s", "/data/celerybeat-schedule"]
+    depends_on:
+      api: {condition: service_healthy}
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        API_INTERNAL_URL: http://api:8000   # baked into the /api rewrite at build time
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [api]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  appdata:

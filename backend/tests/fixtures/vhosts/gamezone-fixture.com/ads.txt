@@ -1,0 +1,4 @@
+google.com, pub-2222222222222222, DIRECT, f08c47fec0942fa0
+indexexchange.com, 555, DIRECT
+rubiconproject.com, 777, DIRECT
+appnexus.com, 888, RESELLER

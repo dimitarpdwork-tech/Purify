@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Palette: a cool "ledger" grey with a deep signal-teal accent. Status hues are reserved
+   for evidence states only so colour always carries meaning. */
+:root {
+  --paper: 245 246 244;
+  --panel: 255 255 255;
+  --sunken: 237 239 236;
+  --rule: 218 222 218;
+  --ink: 24 32 40;
+  --muted: 88 98 108;
+  --faint: 140 148 154;
+  --accent: 14 94 116;
+  --accent-soft: 222 238 241;
+  --active: 22 117 74;
+  --active-soft: 222 242 231;
+  --possible: 150 98 0;
+  --possible-soft: 252 241 214;
+  --declared: 88 72 176;
+  --declared-soft: 235 232 250;
+  --danger: 178 44 44;
+  --danger-soft: 250 228 226;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --paper: 17 21 25;
+  --panel: 24 29 34;
+  --sunken: 31 37 43;
+  --rule: 48 56 63;
+  --ink: 226 230 232;
+  --muted: 160 168 174;
+  --faint: 112 121 128;
+  --accent: 92 184 206;
+  --accent-soft: 22 52 60;
+  --active: 88 196 140;
+  --active-soft: 20 52 37;
+  --possible: 226 172 64;
+  --possible-soft: 60 46 14;
+  --declared: 168 156 240;
+  --declared-soft: 44 40 76;
+  --danger: 240 120 112;
+  --danger-soft: 68 28 28;
+  color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body {
+  background: rgb(var(--paper));
+  color: rgb(var(--ink));
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 13.5px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tnum { font-variant-numeric: tabular-nums; }
+
+:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 1px; }
+
+::selection { background: rgb(var(--accent) / 0.2); }
+
+/* thin scrollbars for dense panes */
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--rule)) transparent; }
+
+/* Hatched fill used for "scan inconclusive": absence cannot be inferred */
+.hatch {
+  background-image: repeating-linear-gradient(135deg, rgb(var(--faint) / 0.22) 0 2px, transparent 2px 5px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+@keyframes toast-in { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+.toast-in { animation: toast-in 160ms ease-out; }
+@keyframes drawer-in { from { transform: translateX(16px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+.drawer-in { animation: drawer-in 160ms ease-out; }

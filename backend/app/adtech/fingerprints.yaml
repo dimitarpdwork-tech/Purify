@@ -1,0 +1,461 @@
+# Purify ad-tech fingerprint registry (proprietary; written for this project).
+#
+# Each vendor may define:
+#   script:   regexes matched against script / resource URLs (loaded or referenced)
+#   network:  regexes matched against network request URLs that indicate the integration
+#             is *executing* (ad/bid requests). Observed only in rendered scans.
+#   globals:  JS global names checked in rendered pages (dotted paths allowed)
+#   html:     regexes matched against raw HTML (static evidence, weaker)
+#   ads_txt:  ad-system domains as they appear in ads.txt field #1
+#   bidders:  Prebid bidder codes that map to this vendor
+#
+# Matching rules are case-insensitive. Evidence -> status mapping lives in detector.py and is
+# deliberately conservative: nothing here proves auctions, fill, revenue or contracts.
+version: 2026.10.1
+
+vendors:
+  # ------------------------------------------------------------------ Google
+  - key: google_gam
+    name: Google Ad Manager (GPT)
+    category: ad_server
+    script: ['securepubads\.g\.doubleclick\.net/tag/js/gpt\.js', 'googletagservices\.com/tag/js/gpt\.js', 'securepubads\.g\.doubleclick\.net/pagead/managed/js/gpt/']
+    network: ['(securepubads|pubads)\.g\.doubleclick\.net/gampad/ads']
+    globals: ['googletag.pubadsReady', 'googletag.apiReady']
+    html: ['googletag\.defineSlot\(', 'googletag\.pubads\(\)', '/gampad/ads\?']
+  - key: google_adsense
+    name: Google AdSense
+    category: adsense
+    script: ['pagead2\.googlesyndication\.com/pagead/js/adsbygoogle\.js']
+    network: ['googleads\.g\.doubleclick\.net/pagead/ads\?', 'pagead2\.googlesyndication\.com/pagead/ads\?']
+    globals: ['adsbygoogle.loaded']
+    html: ['class=["''][^"'']*adsbygoogle', 'data-ad-client=["'']ca-pub-\d+', 'google_ad_client']
+  - key: google_ads_txt
+    name: Google (AdSense / AdX / Ad Manager authorisation)
+    category: declared_google
+    ads_txt: ['google.com']
+  - key: google_ima
+    name: Google IMA SDK (video ads)
+    category: video
+    script: ['imasdk\.googleapis\.com/js/sdkloader/ima3']
+    globals: ['google.ima']
+
+  # ------------------------------------------------------------------ header bidding wrappers
+  - key: prebid
+    name: Prebid.js
+    category: header_bidding
+    script: ['prebid[\w.\-]*\.js', '/prebid/']
+    globals: ['pbjs.version']  # detector also reads window._pbjsGlobals for renamed instances
+    html: ['pbjs\.requestBids', 'pbjs\.addAdUnits', '_pbjsGlobals']
+  - key: amazon_aps
+    name: Amazon Publisher Services (TAM/UAM)
+    category: header_bidding
+    script: ['c\.amazon-adsystem\.com/aax2/apstag\.js']
+    network: ['aax\.amazon-adsystem\.com/e/dtb/bid']
+    globals: ['apstag.fetchBids']
+    html: ['apstag\.init\(']
+    ads_txt: ['amazon-adsystem.com', 'aps.amazon.com']
+    bidders: ['amazon']
+  - key: pubmatic_openwrap
+    name: PubMatic OpenWrap
+    category: header_bidding
+    script: ['ads\.pubmatic\.com/adserver/js/pwt/']
+    globals: ['PWT.requestBids']
+
+  # ------------------------------------------------------------------ SSPs
+  - key: pubmatic
+    name: PubMatic
+    category: ssp
+    network: ['hbopenbid\.pubmatic\.com/translator', 'openbid\.pubmatic\.com', 'ow\.pubmatic\.com/openrtb']
+    ads_txt: ['pubmatic.com']
+    bidders: ['pubmatic']
+  - key: index_exchange
+    name: Index Exchange
+    category: ssp
+    script: ['js-sec\.indexww\.com/ht/p/']
+    network: ['htlb\.casalemedia\.com/(cygnus|openrtb)']
+    ads_txt: ['indexexchange.com']
+    bidders: ['ix', 'indexExchange']
+  - key: magnite
+    name: Magnite / Rubicon Project
+    category: ssp
+    script: ['micro\.rubiconproject\.com/prebid/dynamic/']
+    network: ['fastlane\.rubiconproject\.com/a/api/fastlane', 'prebid-server\.rubiconproject\.com', 'prebid\.adnxs\.com/pbs.*magnite']
+    ads_txt: ['rubiconproject.com', 'magnite.com', 'spotxchange.com', 'spotx.tv', 'telaria.com', 'tremorhub.com']
+    bidders: ['rubicon', 'magnite']
+  - key: openx
+    name: OpenX
+    category: ssp
+    network: ['rtb\.openx\.net/(openrtbb|sync|w/)', '\.openx\.net/w/1\.0/arj']
+    ads_txt: ['openx.com']
+    bidders: ['openx']
+  - key: xandr
+    name: Xandr / Microsoft Monetize
+    category: ssp
+    script: ['acdn\.adnxs\.com/ast/']
+    network: ['ib\.adnxs\.com/(ut/v3|ttj|jpt)', 'prebid\.adnxs\.com']
+    ads_txt: ['appnexus.com', 'xandr.com', 'adnxs.com']
+    bidders: ['appnexus', 'msft', 'xandr']
+  - key: triplelift
+    name: TripleLift
+    category: ssp
+    network: ['tlx\.3lift\.com/header/auction', 'tlx\.3lift\.com/s2s']
+    ads_txt: ['triplelift.com']
+    bidders: ['triplelift']
+  - key: sharethrough
+    name: Sharethrough
+    category: ssp
+    network: ['btlr\.sharethrough\.com']
+    ads_txt: ['sharethrough.com']
+    bidders: ['sharethrough']
+  - key: criteo
+    name: Criteo
+    category: ssp
+    script: ['static\.criteo\.net/js/ld/publishertag', 'dynamic\.criteo\.com/js/ld/publishertag']
+    network: ['bidder\.criteo\.com/cdb', 'grid-bidder\.criteo\.com']
+    globals: ['Criteo.RequestBids']
+    ads_txt: ['criteo.com']
+    bidders: ['criteo']
+  - key: sovrn
+    name: Sovrn
+    category: ssp
+    network: ['ap\.lijit\.com/rtb/bid']
+    ads_txt: ['sovrn.com', 'lijit.com']
+    bidders: ['sovrn']
+  - key: equativ
+    name: Equativ (Smart AdServer)
+    category: ssp
+    script: ['ced\.sascdn\.com/tag/']
+    network: ['prg\.smartadserver\.com/(prebid|ac)', 'ssb-global\.smartadserver\.com']
+    ads_txt: ['smartadserver.com', 'equativ.com']
+    bidders: ['smartadserver', 'equativ']
+  - key: rich_audience
+    name: Rich Audience
+    category: ssp
+    network: ['shb\.richaudience\.com/hb/']
+    ads_txt: ['richaudience.com']
+    bidders: ['richaudience']
+  - key: adagio
+    name: Adagio
+    category: ssp
+    script: ['script\.4dex\.io/']
+    network: ['mp\.4dex\.io/prebid', 'mp-ams\.4dex\.io']
+    ads_txt: ['adagio.io']
+    bidders: ['adagio']
+  - key: teads
+    name: Teads
+    category: ssp
+    script: ['a\.teads\.tv/(page|media)/']
+    network: ['a\.teads\.tv/hb/bid-request', 'teads\.tv/.*(vast|ad)']
+    ads_txt: ['teads.tv', 'teads.com']
+    bidders: ['teads']
+  - key: medianet
+    name: Media.net
+    category: ssp
+    script: ['contextual\.media\.net/(dmedianet|bidexchange|.*\.js)']
+    network: ['prebid\.media\.net/rtb/prebid', 'hbx\.media\.net/']
+    ads_txt: ['media.net']
+    bidders: ['medianet']
+  - key: thirty_three_across
+    name: 33Across
+    category: ssp
+    network: ['ssc\.33across\.com/api/v1/hb']
+    ads_txt: ['33across.com']
+    bidders: ['33across']
+  - key: gumgum
+    name: GumGum
+    category: ssp
+    script: ['g2\.gumgum\.com/javascripts/']
+    network: ['g2\.gumgum\.com/hbid/imp', 'g2\.gumgum\.com/providers']
+    ads_txt: ['gumgum.com']
+    bidders: ['gumgum']
+  - key: seedtag
+    name: Seedtag
+    category: ssp
+    script: ['t\.seedtag\.com/t/']
+    network: ['s\.seedtag\.com/c/hb/bid']
+    ads_txt: ['seedtag.com']
+    bidders: ['seedtag']
+  - key: kargo
+    name: Kargo
+    category: ssp
+    network: ['krk2\.kargo\.com/api/v1/prebid']
+    ads_txt: ['kargo.com']
+    bidders: ['kargo']
+  - key: yieldmo
+    name: Yieldmo
+    category: ssp
+    network: ['ads\.yieldmo\.com/exchange/prebid']
+    ads_txt: ['yieldmo.com']
+    bidders: ['yieldmo']
+  - key: smilewanted
+    name: SmileWanted
+    category: ssp
+    network: ['prebid\.smilewanted\.com']
+    ads_txt: ['smilewanted.com']
+    bidders: ['smilewanted']
+  - key: ogury
+    name: Ogury
+    category: ssp
+    network: ['mweb-hb\.presage\.io/api/header-bidding-request']
+    ads_txt: ['ogury.com', 'presage.io']
+    bidders: ['ogury']
+  - key: onetag
+    name: OneTag
+    category: ssp
+    network: ['onetag-sys\.com/prebid-request']
+    ads_txt: ['onetag.com']
+    bidders: ['onetag']
+  - key: sonobi
+    name: Sonobi
+    category: ssp
+    network: ['apex\.go\.sonobi\.com/trinity']
+    ads_txt: ['sonobi.com']
+    bidders: ['sonobi']
+  - key: unruly
+    name: Unruly / Nexxen
+    category: ssp
+    network: ['targeting\.unrulymedia\.com/unruly_prebid']
+    ads_txt: ['unrulymedia.com', 'video.unrulymedia.com']
+    bidders: ['unruly']
+  - key: improve_digital
+    name: Improve Digital
+    category: ssp
+    network: ['ad\.360yield\.com/pb']
+    ads_txt: ['improvedigital.com']
+    bidders: ['improvedigital']
+  - key: adform
+    name: Adform
+    category: ssp
+    network: ['adx\.adform\.net/adx/openrtb']
+    ads_txt: ['adform.com']
+    bidders: ['adf', 'adform']
+  - key: minute_media_nativo
+    name: Nativo
+    category: ssp
+    network: ['exchange\.postrelease\.com/prebid']
+    ads_txt: ['nativo.com']
+    bidders: ['nativo']
+  - key: freewheel
+    name: FreeWheel (Comcast)
+    category: ssp
+    network: ['\.fwmrm\.net/ad/g/1']
+    ads_txt: ['freewheel.tv']
+    bidders: ['freewheel-ssp']
+  - key: inmobi
+    name: InMobi
+    category: ssp
+    ads_txt: ['inmobi.com']
+    bidders: ['inmobi']
+  - key: verizon_yahoo
+    name: Yahoo SSP
+    category: ssp
+    network: ['c2shb\.pubgw\.yahoo\.com/admax/bid']
+    ads_txt: ['yahoo.com', 'aol.com']
+    bidders: ['yahooAds', 'yahoossp']
+
+  # ------------------------------------------------------------------ native / recommendation
+  - key: taboola
+    name: Taboola
+    category: native
+    script: ['cdn\.taboola\.com/libtrc/']
+    network: ['trc\.taboola\.com/']
+    globals: ['_taboola']
+    ads_txt: ['taboola.com']
+    bidders: ['taboola']
+  - key: outbrain
+    name: Outbrain
+    category: native
+    script: ['widgets\.outbrain\.com/outbrain\.js']
+    network: ['widgets\.outbrain\.com/hb', 'odb\.outbrain\.com/utils/get']
+    globals: ['OBR']
+    ads_txt: ['outbrain.com']
+    bidders: ['outbrain']
+
+  # ------------------------------------------------------------------ video
+  - key: vdo_ai
+    name: VDO.AI
+    category: monetization_partner
+    script: ['a\.vdo\.ai/core/']
+    network: ['\.vdo\.ai/']
+    ads_txt: ['vdo.ai']
+    bidders: ['vdoai']
+  - key: connatix
+    name: Connatix
+    category: video
+    script: ['cd\.connatix\.com/', 'capi\.connatix\.com']
+    ads_txt: ['connatix.com']
+    bidders: ['connatix']
+  - key: primis
+    name: Primis
+    category: video
+    script: ['live\.primis\.tech/']
+    ads_txt: ['primis.tech']
+  - key: aniview
+    name: Aniview
+    category: video
+    script: ['player\.aniview\.com/script/']
+    ads_txt: ['aniview.com']
+  - key: showheroes
+    name: ShowHeroes
+    category: video
+    script: ['static\.showheroes\.com/']
+    ads_txt: ['showheroes.com', 'viralize.com']
+    bidders: ['showheroes-bs']
+  - key: jwplayer
+    name: JW Player
+    category: video_player
+    script: ['(cdn|ssl)\.jwplayer\.com/', 'content\.jwplatform\.com/libraries/']
+    globals: ['jwplayer']
+
+  # ------------------------------------------------------------------ managed monetization partners
+  - key: infolinks
+    name: Infolinks
+    category: monetization_partner
+    script: ['resources\.infolinks\.com/js/']
+    globals: ['infolinks_pid']
+    html: ['infolinks_pid\s*=']
+    ads_txt: ['infolinks.com']
+  - key: adpushup
+    name: AdPushup
+    category: monetization_partner
+    script: ['cdn\.adpushup\.com/']
+    globals: ['adpushup']
+    ads_txt: ['adpushup.com']
+  - key: setupad
+    name: Setupad
+    category: monetization_partner
+    script: ['stpd\.cloud/', 'setupad\.net/']
+    globals: ['stpd']
+    ads_txt: ['setupad.com']
+  - key: monetizemore
+    name: MonetizeMore (PubGuru)
+    category: monetization_partner
+    script: ['(c|m2d)\.(pubguru\.net|m2\.ai)/', 'pubguru\.(net|com)/']
+    globals: ['pg.atq']
+    ads_txt: ['monetizemore.com', 'pubguru.com']
+  - key: ezoic
+    name: Ezoic
+    category: monetization_partner
+    script: ['(go|g|sa)\.ezoic\.net/', '\.ezojs\.com/', 'ezoic\.com/.*\.js']
+    globals: ['ezstandalone', '__ez']
+    html: ['ezoic', 'ez-clearholder']
+    ads_txt: ['ezoic.ai', 'ezoic.com']
+  - key: raptive
+    name: Raptive (AdThrive)
+    category: monetization_partner
+    script: ['ads\.adthrive\.com/', 'ads\.raptive\.com/']
+    globals: ['adthrive']
+    ads_txt: ['adthrive.com', 'raptive.com']
+  - key: mediavine
+    name: Mediavine
+    category: monetization_partner
+    script: ['scripts\.mediavine\.com/tags/']
+    globals: ['$mediavine']
+    ads_txt: ['mediavine.com']
+  - key: freestar
+    name: Freestar
+    category: monetization_partner
+    script: ['a\.pub\.network/', 'freestar\.com/']
+    globals: ['freestar.config']
+    ads_txt: ['freestar.com', 'pub.network']
+  - key: playwire
+    name: Playwire
+    category: monetization_partner
+    script: ['cdn\.intergient\.com/', 'config\.playwire\.com/', 'cdn\.intergi\.com/']
+    globals: ['ramp.que']
+    ads_txt: ['playwire.com']
+  - key: snigel
+    name: Snigel
+    category: monetization_partner
+    script: ['cdn\.snigelweb\.com/']
+    globals: ['adngin']
+    ads_txt: ['snigelweb.com']
+  - key: venatus
+    name: Venatus Media
+    category: monetization_partner
+    script: ['hb\.vntsm\.com/', 'vntsm\.com/']
+    ads_txt: ['venatusmedia.com']
+  - key: nitropay
+    name: NitroPay
+    category: monetization_partner
+    script: ['s\.nitropay\.com/']
+    globals: ['nitroAds']
+    ads_txt: ['nitropay.com']
+  - key: publift
+    name: Publift (Fuse)
+    category: monetization_partner
+    script: ['cdn\.fuseplatform\.net/publift/']
+    globals: ['fusetag']
+    ads_txt: ['publift.com']
+  - key: assertive
+    name: Assertive Yield (analytics)
+    category: yield_analytics
+    script: ['\.assertcom\.de/', 'assertiveyield\.com/']
+    globals: ['assertive']
+  - key: optidigital
+    name: Optidigital
+    category: monetization_partner
+    script: ['scripts\.opti-digital\.com/']
+    ads_txt: ['optidigital.com']
+  - key: adsterra
+    name: Adsterra
+    category: monetization_partner
+    script: ['\.(profitabledisplaynetwork|highperformanceformat)\.com/']
+    ads_txt: ['adsterra.com']
+  - key: propellerads
+    name: PropellerAds
+    category: monetization_partner
+    ads_txt: ['propellerads.com']
+
+  # ------------------------------------------------------------------ CMS / platform (classification helpers)
+  - key: wordpress
+    name: WordPress
+    category: cms
+    script: ['/wp-content/', '/wp-includes/']
+    html: ['<meta name="generator" content="WordPress', '/wp-content/', '/wp-json/']
+  - key: arc_xp
+    name: Arc XP
+    category: cms
+    script: ['arcpublishing\.com', '/pf/dist/']
+    html: ['Fusion\.globalContent', 'arc-site']
+  - key: drupal
+    name: Drupal
+    category: cms
+    html: ['<meta name="Generator" content="Drupal', 'drupal-settings-json', '/sites/default/files/']
+  - key: ghost
+    name: Ghost
+    category: cms
+    html: ['<meta name="generator" content="Ghost']
+  - key: discourse
+    name: Discourse
+    category: forum_software
+    html: ['<meta name="generator" content="Discourse', 'discourse-assets']
+  - key: xenforo
+    name: XenForo
+    category: forum_software
+    html: ['data-xf-init', 'XenForo']
+  - key: phpbb
+    name: phpBB
+    category: forum_software
+    html: ['phpBB', 'viewtopic\.php\?']
+  - key: vbulletin
+    name: vBulletin
+    category: forum_software
+    html: ['vBulletin']
+  - key: shopify
+    name: Shopify
+    category: ecommerce_platform
+    script: ['cdn\.shopify\.com/']
+    html: ['Shopify\.theme', 'cdn\.shopify\.com']
+  - key: woocommerce
+    name: WooCommerce
+    category: ecommerce_platform
+    html: ['woocommerce', 'wc-add-to-cart']
+  - key: magento
+    name: Magento / Adobe Commerce
+    category: ecommerce_platform
+    html: ['Magento_', 'mage/cookies']
+  - key: google_analytics
+    name: Google Analytics / Tag Manager
+    category: analytics
+    script: ['googletagmanager\.com/(gtag|gtm)', 'google-analytics\.com/analytics\.js']
