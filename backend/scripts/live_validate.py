@@ -38,17 +38,6 @@ from app.services.normalize import normalize
 from app.services.safe_fetch import SafeFetcher
 
 BENCH = Path(__file__).resolve().parent.parent / "benchmark" / "benchmark_sites.csv"
-PROGRESS = {"done": 0, "total": 0, "start": 0.0}
-
-
-def _progress_prefix() -> str:
-    """'[23/110 · ~35 min left]' - estimated from the average time per finished site."""
-    PROGRESS["done"] += 1
-    done, total = PROGRESS["done"], PROGRESS["total"]
-    elapsed = time.monotonic() - PROGRESS["start"]
-    left = (elapsed / done) * (total - done) if done else 0
-    eta = f"~{int(left // 60)} min left" if done < total else "finishing"
-    return f"[{done}/{total} · {eta}]"
 
 
 def _ws(host: str) -> Website:
@@ -94,7 +83,7 @@ async def evaluate_site(row: dict, fetcher: SafeFetcher, renderer, sem: asyncio.
     except Exception as exc:  # noqa: BLE001
         import traceback
 
-        print(f"{_progress_prefix()} {row['host']:32s} ERROR {type(exc).__name__}: {exc}", flush=True)
+        print(f"  {row['host']:32s} ERROR {type(exc).__name__}: {exc}")
         return {"host": row["host"], "expected": row["expected_category"], "expected_is_publisher": row["expected_is_publisher"] == "true",
                 "group": row["group"], "notes": row["notes"], "error": f"{type(exc).__name__}: {exc}",
                 "traceback": traceback.format_exc()[-2000:], "static": {"pages_ok": 0, "problem": f"script error: {exc}"},
@@ -157,8 +146,8 @@ async def _evaluate_site(row: dict, fetcher: SafeFetcher, renderer, sem: asyncio
                          for d in dets if d.category not in ("cms", "analytics", "forum_software", "ecommerce_platform")}
         res["summary"] = detector.summarize(dets)
         res["elapsed_s"] = round(time.monotonic() - t0, 1)
-    print(f"{_progress_prefix()} {host:30s} {res['classification']['category']:24s} exp={row['expected_category']:24s} "
-          f"ads.txt={astatus:10s} gam={res['summary']['gam']} prebid={res['summary']['prebid']}", flush=True)
+    print(f"  {host:32s} {res['classification']['category']:26s} exp={row['expected_category']:26s} ads.txt={astatus:10s} "
+          f"gam={res['summary']['gam']} prebid={res['summary']['prebid']}")
     return res
 
 
@@ -249,8 +238,7 @@ async def main() -> int:
         rows = [r for r in rows if r["host"] in want]
     if args.limit:
         rows = rows[: args.limit]
-    print(f"== benchmark: {len(rows)} sites (a line appears as each site finishes)", flush=True)
-    PROGRESS.update(done=0, total=len(rows), start=time.monotonic())
+    print(f"== benchmark: {len(rows)} sites")
     renderer = None
     results: list[dict] = []
     sem = asyncio.Semaphore(args.concurrency)
