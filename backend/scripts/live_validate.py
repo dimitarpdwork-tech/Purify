@@ -127,20 +127,22 @@ async def _evaluate_site(row: dict, fetcher: SafeFetcher, renderer, sem: asyncio
                 pages.append(PageObservation(url=x.final_url or u, ok=x.ok, rendered=True, html=x.html if x.ok else "",
                                              script_urls=x.script_urls, network_urls=[n["url"] for n in x.network if not n.get("blocked")],
                                              globals_present=x.page.get("globals") or {}, prebid=x.page.get("prebid") or [],
-                                             gpt=x.page.get("gpt"), blocked_reason=x.blocked_reason or x.error))
+                                             gpt=x.page.get("gpt"), consent=x.page.get("consent"), blocked_reason=x.blocked_reason or x.error))
             res["render"] = [{"url": x.url, "ok": x.ok, "status": x.status, "blocked": x.blocked_reason, "error": x.error,
                               "requests": len(x.network), "elapsed_ms": x.elapsed_ms,
                               "placements": len(x.page.get("placements") or []),
                               "prebid": [{"global": p.get("global"), "version": p.get("version"), "bidders": p.get("configured_bidders"),
                                           "requested": p.get("requested_bidders")} for p in (x.page.get("prebid") or [])],
-                              "gpt_slots": len(((x.page.get("gpt") or {}).get("slots")) or [])} for x in rr]
+                              "gpt_slots": len(((x.page.get("gpt") or {}).get("slots")) or []),
+                              "consent": x.page.get("consent")} for x in rr]
             if cls.primary_category == "UNKNOWN" and any(x.ok and x.html for x in rr):
                 fs = [feat.extract_safe(x.html, x.final_url or x.url) for x in rr if x.ok and x.html]
                 c2 = rules.classify(w.host, fs)
                 res["classification_rendered_rescue"] = {"category": c2.primary_category, "confidence": c2.confidence}
         dets = detector.detect(pages, ads_obs)
         res["adtech"] = {d.vendor_key: {"status": d.status, "confidence": d.confidence,
-                                        "evidence": [e.kind + ": " + e.value[:120] for e in d.evidence[:4]]}
+                                        "evidence": [e.kind + ": " + e.value[:120] for e in d.evidence[:4]],
+                                        **({"why": d.detail.get("reasons")} if d.detail.get("reasons") else {})}
                          for d in dets if d.category not in ("cms", "analytics", "forum_software", "ecommerce_platform")}
         res["summary"] = detector.summarize(dets)
         res["elapsed_s"] = round(time.monotonic() - t0, 1)
@@ -170,6 +172,8 @@ def write_report(outdir: Path, infra: list[dict], results: list[dict], rendered:
     pub_fn = sum(1 for r in results if r["classification"]["is_publisher"] is False and r["expected_is_publisher"])
     unknown = sum(1 for r in results if r["classification"]["category"] == "UNKNOWN")
     errors = [r["host"] for r in results if r.get("error")]
+    gated = [r["host"] for r in results if any(((r.get("adtech") or {}).get(k) or {}).get("status") == "SCAN_INCONCLUSIVE"
+                                               and "consent" in json.dumps((r.get("adtech") or {}).get(k)) for k in ("google_gam",))]
     static_fail = Counter((r["static"]["problem"] or "ok")[:60] for r in results)
     ads = Counter(r["ads_txt"]["status"] for r in results)
     rend = Counter()
@@ -190,7 +194,8 @@ def write_report(outdir: Path, infra: list[dict], results: list[dict], rendered:
               f"- category matches expectation: {len(correct)}/{n} ({100 * len(correct) / max(n, 1):.0f}%)",
               f"- publisher precision: {pub_tp}/{pub_tp + pub_fp} ; publisher misses (classified non-publisher): {pub_fn}",
               f"- UNKNOWN (no usable content - blocked/challenge/failed): {unknown}",
-              f"- script errors (bugs - please report): {len(errors)} {errors}", "",
+              f"- script errors (bugs - please report): {len(errors)} {errors}",
+              f"- ad-tech inconclusive because of cookie-consent walls: {len(gated)} {gated}", "",
               "| host | expected | got | conf | rescue (rendered) | static problem |", "|---|---|---|---|---|---|"]
     for r in sorted(results, key=lambda r: r["host"]):
         ok = r in correct

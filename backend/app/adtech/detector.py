@@ -52,6 +52,7 @@ class PageObservation:
     globals_present: dict[str, bool] = field(default_factory=dict)
     prebid: list[dict[str, Any]] = field(default_factory=list)  # one entry per pbjs instance
     gpt: dict[str, Any] | None = None  # {"slots": [{path, sizes, div}], "pubads_ready": bool}
+    consent: dict[str, Any] | None = None  # CMP state captured in rendered pages (see render.py)
     blocked_reason: str | None = None
 
 
@@ -208,7 +209,23 @@ def detect(
     return results
 
 
+def _consent_gated(ok_rendered: list[PageObservation]) -> list[str]:
+    """CMP names if every successfully rendered page was still waiting for cookie consent."""
+    if not ok_rendered or not all((p.consent or {}).get("pending") for p in ok_rendered):
+        return []
+    names: set[str] = set()
+    for p in ok_rendered:
+        names.update((p.consent or {}).get("cmps") or [])
+    return sorted(names) or ["unidentified CMP"]
+
+
 def _absence(v: Vendor, ok_static, ok_rendered, ads_ok, pages) -> VendorResult:
+    gated = _consent_gated(ok_rendered)
+    if gated:
+        # Ads on consent-walled pages typically load only after "Accept"; absence proves nothing.
+        return VendorResult(v.key, v.name, v.category, INCONCLUSIVE, 0.0,
+                            detail={"reasons": [f"ads likely waiting for cookie consent ({', '.join(gated)})"],
+                                    "scan_depth": "rendered", "consent_gated": True})
     if ok_rendered:
         return VendorResult(v.key, v.name, v.category, NOT_OBSERVED, 0.6,
                             detail={"scan_depth": "rendered", "pages_rendered": len(ok_rendered)})

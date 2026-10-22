@@ -28,7 +28,7 @@ CHALLENGE_MARKERS = ("just a moment", "checking your browser", "verify you are h
                      "captcha", "are you a robot", "access denied", "enable javascript and cookies")
 
 _PAGE_SCRIPT = r"""
-(GLOBALS) => {
+async (GLOBALS) => {
   const out = {globals:{}, prebid:[], gpt:null, placements:[], video:{}, title: document.title || '', text_len: (document.body && document.body.innerText || '').length};
   const get = (path) => { try { return path.split('.').reduce((o,k) => (o == null ? undefined : o[k]), window); } catch (e) { return undefined; } };
   for (const g of GLOBALS) { const v = get(g); out.globals[g] = (v !== undefined && v !== null && v !== false); }
@@ -84,6 +84,32 @@ _PAGE_SCRIPT = r"""
       has_iframe: !!(iframe && iframe.getBoundingClientRect().width > 0), lazy_attr: !!(el.getAttribute('data-lazy') || el.getAttribute('loading') === 'lazy')});
   }
   out.video = {video_elements: document.querySelectorAll('video').length, ima: !!(window.google && window.google.ima)};
+  // ---- cookie-consent (CMP) state: in the EU many sites load NO ads until consent is given
+  const consent = {cmps: [], banner_visible: false, tcf: null};
+  const cmpGlobals = {OneTrust: 'onetrust', Optanon: 'onetrust', Didomi: 'didomi', _sp_: 'sourcepoint', Cookiebot: 'cookiebot',
+                      UC_UI: 'usercentrics', __cmp: 'tcf_v1', truste: 'trustarc', klaro: 'klaro', _iub: 'iubenda',
+                      axeptioSDK: 'axeptio', googlefc: 'google_funding_choices', __tcfapi: 'tcf_v2', __gpp: 'gpp'};
+  for (const [g, name] of Object.entries(cmpGlobals)) { try { if (window[g]) consent.cmps.push(name); } catch (e) {} }
+  const bannerSel = ['#onetrust-banner-sdk', '#onetrust-consent-sdk', '#didomi-host', '#didomi-notice', 'iframe[id^="sp_message_iframe"]',
+    '[id^="sp_message_container"]', '#CybotCookiebotDialog', '#usercentrics-root', '.fc-consent-root', '#qc-cmp2-container',
+    '.qc-cmp2-container', '#truste-consent-track', '#cmpbox', '.cmp-container', '[class*="consent-banner"]', '[id*="cookie-banner"]'];
+  for (const sel of bannerSel) {
+    try { const el = document.querySelector(sel); if (el) { const r = el.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden') { consent.banner_visible = true; consent.banner = sel; break; } } } catch (e) {}
+  }
+  if (typeof window.__tcfapi === 'function') {
+    consent.tcf = await new Promise((resolve) => {
+      const t = setTimeout(() => resolve({timeout: true}), 1500);
+      try { window.__tcfapi('getTCData', 2, (d, ok) => { clearTimeout(t);
+              resolve(ok && d ? {gdprApplies: d.gdprApplies, cmpStatus: d.cmpStatus, eventStatus: d.eventStatus, cmpId: d.cmpId,
+                                 purpose1: !!(d.purpose && d.purpose.consents && d.purpose.consents['1'])} : {ok: false}); });
+      } catch (e) { clearTimeout(t); resolve({error: String(e)}); }
+    });
+  }
+  consent.cmps = [...new Set(consent.cmps)];
+  // Consent is "pending" when a banner is showing, or TCF says GDPR applies and storage consent (purpose 1) is not given.
+  consent.pending = consent.banner_visible || !!(consent.tcf && consent.tcf.gdprApplies && consent.tcf.purpose1 === false);
+  out.consent = consent;
   return out;
 }
 """

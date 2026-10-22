@@ -70,7 +70,15 @@ The infrastructure checks passed on the real internet: outbound HTTPS, robots.tx
 - **bbc.com crashed the classifier.** Its schema.org `@type` is a list. The parser now handles that, and one bad page can no longer crash a batch or the validation run.
 - **A database password containing `@` broke the connection.** The URL is now built from escaped parts.
 
-What did work:
+A second live run (10 news sites) showed:
+
+- **Classification:** 7/10 correct, publisher precision 8/8. reuters.com and apnews.com blocked the robot and were correctly reported as UNKNOWN / inconclusive.
+- **Ad tech:** GAM active signals on cnn.com, nbcnews.com and independent.co.uk; Prebid active on nbcnews.com.
+- **Two problems found and fixed:**
+  - **Cookie walls caused false "no ads":** spiegel.de and theguardian.com had 15–19 empty ad containers and no ad calls, because ads were waiting for cookie consent. The renderer now records consent state (CMP globals, visible banners, TCF `gdprApplies` / purpose-1 consent). When every rendered page is consent-gated, key vendors are reported as `SCAN_INCONCLUSIVE` ("ads likely waiting for cookie consent"), never `NOT_OBSERVED`.
+  - **theguardian.com was labelled LIFESTYLE:** its menu links to many lifestyle sections. Topic hits are now capped, and a site with news schema that covers several topic areas is classified as news.
+
+What did work in the first run:
 
 - bbc.com was classified as `NEWS_PUBLISHER` and its ads.txt was found.
 - reuters.com was reported as robots-disallowed / inconclusive (not "no ads").

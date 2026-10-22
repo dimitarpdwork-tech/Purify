@@ -97,3 +97,15 @@ def test_extract_safe_never_raises():
 
     out = extract_safe("<html><body>" + "<a href='http://[bad'>x</a>" * 3 + "</body></html>", "https://example.com/")
     assert isinstance(out, dict)
+
+
+def test_broad_news_site_with_lifestyle_sections_is_news():
+    """Regression (live: theguardian.com was labelled LIFESTYLE). Many lifestyle nav words + news schema."""
+    html = """<html lang="en-GB"><head><title>News, sport and opinion from the Guardian's global edition</title>
+    <script type="application/ld+json">{"@type":"NewsMediaOrganization","name":"The Guardian"}</script></head><body>
+    <nav><a href="/world">World</a><a href="/sport">Sport</a><a href="/culture">Culture</a><a href="/film">Film</a><a href="/music">Music</a>
+    <a href="/lifestyle">Lifestyle</a><a href="/food">Food</a><a href="/travel">Travel</a><a href="/fashion">Fashion</a><a href="/health">Health</a>
+    <a href="/money">Money</a><a href="/technology">Technology</a><a href="/games">Games</a></nav>""" + \
+        "".join(f'<article><a href="/world/2026/oct/{i}/story-about-many-things-{i}">s</a></article>' for i in range(1, 30)) + "</body></html>"
+    res = classify("theguardian.com", [extract(html, "https://www.theguardian.com/europe")])
+    assert res.primary_category == "NEWS_PUBLISHER"

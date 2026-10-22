@@ -223,6 +223,13 @@ def _topic(home, others, all_types, default: str | None = "GENERAL_CONTENT_PUBLI
         hits["GAMING_PUBLISHER"] = hits.get("GAMING_PUBLISHER", 0) + 3
     if not hits:
         return default
+    # Broad news sites link to many sections (food, travel, fashion...). One section's vocabulary
+    # must not outvote the site's identity: cap each topic, and a site with news schema covering
+    # several topic areas is a general news publisher.
+    hits = {k: min(v, 4) for k, v in hits.items()}
+    breadth = sum(1 for k, v in hits.items() if v >= 1 and k != "NEWS_PUBLISHER")
+    if all_types & NEWS_SCHEMA and breadth >= 3:
+        return "NEWS_PUBLISHER"
     best = max(hits.items(), key=lambda kv: kv[1])
     if best[1] < 2:
         return default

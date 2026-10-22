@@ -482,13 +482,13 @@ def _persist_adtech(wid: int, renders: list[Any], render_error: str | None) -> N
                                   html=r.html if r.ok else "", script_urls=r.script_urls,
                                   network_urls=[n["url"] for n in r.network if not n.get("blocked")],
                                   globals_present=(r.page.get("globals") or {}), prebid=r.page.get("prebid") or [],
-                                  gpt=r.page.get("gpt"), blocked_reason=r.blocked_reason or r.error)
+                                  gpt=r.page.get("gpt"), consent=r.page.get("consent"), blocked_reason=r.blocked_reason or r.error)
             pages.append(obs)
             page_rows.append({
                 "url": r.url, "final_url": r.final_url, "page_role": obs.role, "http_status": r.status, "content_type": "text/html",
                 "html_sha256": hashlib.sha256(r.html.encode()).hexdigest() if r.html else None, "html_gz": _gz(r.html) if r.html else None,
                 "script_urls": r.script_urls[:300], "network_requests": r.network[:1500],
-                "page_globals": {k: r.page.get(k) for k in ("globals", "prebid", "gpt", "placements", "video", "title")},
+                "page_globals": {k: r.page.get(k) for k in ("globals", "prebid", "gpt", "placements", "video", "title", "consent")},
                 "blocked_reason": r.blocked_reason or r.error,
             })
         if page_rows or render_error:

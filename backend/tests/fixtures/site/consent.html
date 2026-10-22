@@ -1,0 +1,10 @@
+<!doctype html><html lang="de"><head><title>Fixture Zeitung - Nachrichten</title>
+<!-- TEST FIXTURE: imitates a TCF CMP waiting for consent (GDPR applies, no purpose-1 consent). No ads load. -->
+<script>
+window.__tcfapi = function(cmd, ver, cb){ if (cmd === 'getTCData') cb({gdprApplies: true, cmpStatus: 'loaded', eventStatus: 'cmpuishown', cmpId: 6, purpose: {consents: {}}}, true); };
+window._sp_ = {config: {}};
+</script></head><body>
+<div id="sp_message_container_1" style="position:fixed;inset:0;background:#fff;z-index:9">Wir brauchen Ihre Zustimmung <button>Akzeptieren</button></div>
+<div class="ad-container" style="width:728px;height:90px"></div>
+<article><p>Text</p><div class="ad-slot" style="width:300px;height:250px"></div></article>
+</body></html>
