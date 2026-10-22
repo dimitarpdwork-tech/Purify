@@ -80,6 +80,31 @@ A second live run (10 news sites) showed:
 
 - **Follow-up, decided by Purify:** a consent-wall "inconclusive" makes most EU sites unverifiable, so the robot now accepts cookie banners by default (`CONSENT_MODE=accept`). Tested on local fixtures with real Chromium: it clicks "Akzeptieren und weiter" and not the "PUR-Abo" subscription button, and it handles a Sourcepoint-style iframe. **PENDING LIVE re-run.**
 
+### Full benchmark (116 real sites, your laptop, cookie banners accepted)
+
+- All infrastructure checks passed. Cookie banners were accepted on 64 sites.
+- **Ad tech:** GAM active signals on 44 sites, Prebid on 35, APS on 29.
+- **Classification problems found:**
+  - Niche publishers were labelled NEWS (gaming, sports, entertainment, tech, lifestyle sites). The Guardian fix had been too broad.
+  - 9 non-publishers were labelled publishers: consultancies' insight blogs, SaaS blog, bank, retailers, gov.bg.
+- **Robots handling was too strict:** a robots.txt answering 401/403 was treated as "disallow all". RFC 9309 treats it as no restrictions.
+- **The browser scan did not check robots.txt.** It now does.
+
+Fixes:
+
+- Niche is now decided by the site's **headlines**, then by its identity (title / domain words), and only then falls back to general news.
+- **ads.txt sellers count as advertising evidence.** Article-like sites with *no* ad evidence but strong corporate / retail / SaaS / banking signals are classified as that business.
+- New signals: cart and product links, banking products, corporate navigation.
+- Government hosts that are themselves registrable roots (gov.bg).
+- **Robots per RFC 9309:**
+  - 4xx (except 429) means no restrictions.
+  - 5xx, 429 or a timeout means disallow.
+  - Rules are matched on the `PurifyPublisherIntelligence` token.
+- **User-agent:** the standard crawler format (`Mozilla/5.0 (compatible; PurifyPublisherIntelligence/1.0; +url)`). The browser's own UA has the bot token appended, so the robot remains openly identified.
+- **Validation reports** now save each homepage's HTML (`html/` folder) for offline tuning, and report publisher-vs-non-publisher accuracy separately from niche accuracy.
+
+Sites that answer 402 (paywall for bots), 403, an anti-bot challenge, or a robots.txt disallow are still reported as UNKNOWN / inconclusive and are not bypassed.
+
 What did work in the first run:
 
 - bbc.com was classified as `NEWS_PUBLISHER` and its ads.txt was found.

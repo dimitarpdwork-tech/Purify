@@ -101,7 +101,7 @@ bosch.com,CORPORATE,false,corporate,
 accenture.com,CORPORATE,false,corporate,
 deloitte.com,CORPORATE,false,corporate,
 maersk.com,CORPORATE,false,corporate,
-gov.uk,GOVERNMENT,false,government,
+www.gov.uk,GOVERNMENT,false,government,gov.uk itself is a public suffix
 usa.gov,GOVERNMENT,false,government,
 europa.eu,GOVERNMENT,false,government,
 bund.de,GOVERNMENT,false,government,

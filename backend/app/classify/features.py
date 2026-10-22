@@ -17,6 +17,8 @@ _PRICE_RE = re.compile(r"(?:[$€£¥₹]\s?\d{1,5}(?:[.,]\d{2})?|\d{1,5}(?:[.,]
 _SLUG_RE = re.compile(r"/[a-z0-9À-ɏЀ-ӿ%]+(?:-[a-z0-9À-ɏЀ-ӿ%]+){3,}(?:/|\.html?|$)", re.I)
 _ID_ARTICLE_RE = re.compile(r"/(news|article|articles|story|stories|post|posts|blog|a|n)/[^/?#]*\d{4,}", re.I)
 _WS_RE = re.compile(r"\s+")
+_CART_RE = re.compile(r"/(cart|basket|bag|checkout|warenkorb|panier|carrito|carrello|koszyk|kosik|kosar|winkelwagen|kolichka)(/|$)")
+_PRODUCT_RE = re.compile(r"/(product|products|p|dp|item|artikel|produkt|produit|producto|prodotto)/[^/]+")
 
 TOPIC_KEYWORDS: dict[str, list[str]] = {
     "NEWS_PUBLISHER": ["news", "breaking", "politics", "world", "headlines", "latest", "noticias", "nachrichten", "actualités", "notizie",
@@ -24,7 +26,7 @@ TOPIC_KEYWORDS: dict[str, list[str]] = {
     "SPORTS_PUBLISHER": ["sport", "sports", "football", "soccer", "nba", "nfl", "cricket", "tennis", "fútbol", "futbol", "calcio", "fussball",
                          "спорт", "футбол", "transfer", "premier league", "f1", "formula 1", "basketball", "baseball", "hockey", "golf"],
     "GAMING_PUBLISHER": ["game", "games", "gaming", "esports", "playstation", "xbox", "nintendo", "steam", "pc gaming", "walkthrough", "игри", "minecraft", "fortnite"],
-    "TECHNOLOGY_PUBLISHER": ["tech", "technology", "gadgets", "smartphone", "android", "iphone", "software", "ai", "reviews", "hardware", "cybersecurity", "технологии"],
+    "TECHNOLOGY_PUBLISHER": ["tech", "technology", "gadgets", "smartphone", "android", "iphone", "software", "ai", "hardware", "cybersecurity", "технологии"],
     "FINANCE_PUBLISHER": ["finance", "markets", "stocks", "economy", "business", "investing", "crypto", "money", "personal finance", "бизнес", "финанси", "борса"],
     "ENTERTAINMENT_PUBLISHER": ["entertainment", "celebrity", "celebrities", "movies", "film", "tv", "music", "showbiz", "gossip", "anime", "streaming", "шоу", "звезди"],
     "LIFESTYLE_PUBLISHER": ["lifestyle", "recipes", "recipe", "food", "travel", "fashion", "beauty", "health", "parenting", "home", "garden", "diy",
@@ -32,14 +34,54 @@ TOPIC_KEYWORDS: dict[str, list[str]] = {
     "EDUCATIONAL_PUBLISHER": ["learn", "learning", "education", "course", "courses", "tutorial", "tutorials", "dictionary", "encyclopedia",
                               "how to", "guide", "lesson", "homework", "study", "exam", "wiki", "образование"],
 }
+# Headline vocabulary: topic of what a site actually publishes (matched on article link texts).
+HEADLINE_KEYWORDS: dict[str, list[str]] = {
+    "GAMING_PUBLISHER": ["game", "games", "gaming", "gamer", "playstation", "ps5", "ps4", "xbox", "nintendo", "switch 2", "steam", "rpg",
+                         "dlc", "patch notes", "esports", "minecraft", "fortnite", "gta", "call of duty", "zelda", "pokemon", "pokémon",
+                         "elden ring", "speedrun", "multiplayer", "roguelike", "indie game", "walkthrough", "boss fight"],
+    "SPORTS_PUBLISHER": ["match", "league", "cup", "coach", "transfer", "nfl", "nba", "mlb", "nhl", "premier league", "champions league",
+                         "la liga", "serie a", "bundesliga", "championship", "playoff", "playoffs", "quarterback", "striker", "midfielder",
+                         "goalkeeper", "f1", "grand prix", "ufc", "tennis", "golf", "cricket", "rugby", "olympic", "olympics", "derby",
+                         "футбол", "мач", "шампионска", "fútbol", "partido", "calcio", "fußball", "spieltag", "wimbledon", "super bowl"],
+    "ENTERTAINMENT_PUBLISHER": ["movie", "movies", "film", "box office", "trailer", "actor", "actress", "netflix", "hbo", "disney",
+                                "marvel", "oscar", "oscars", "emmy", "emmys", "grammy", "album", "singer", "rapper", "celebrity",
+                                "hollywood", "tv series", "season finale", "showrunner", "cast", "premiere", "red carpet", "kardashian",
+                                "taylor swift", "streaming", "episode", "anime"],
+    "TECHNOLOGY_PUBLISHER": ["iphone", "ipad", "android", "samsung", "galaxy", "pixel", "apple", "google", "microsoft", "windows",
+                             "macos", "laptop", "smartphone", "gpu", "cpu", "nvidia", "amd", "intel", "chip", "processor", "ai",
+                             "chatgpt", "openai", "software", "app", "apps", "gadget", "headphones", "smartwatch", "5g", "linux",
+                             "cybersecurity", "hackers", "tablet", "benchmark", "specs"],
+    "FINANCE_PUBLISHER": ["stock", "stocks", "shares", "investors", "investing", "earnings", "dividend", "nasdaq", "s&p 500", "dow",
+                          "fed", "interest rates", "inflation", "bitcoin", "crypto", "etf", "portfolio", "ipo", "bond", "bonds",
+                          "retirement", "401(k)", "mortgage rates", "wall street", "valuation"],
+    "LIFESTYLE_PUBLISHER": ["recipe", "recipes", "cook", "cooking", "bake", "baking", "dinner", "chicken", "salad", "dessert", "cake",
+                            "beauty", "skincare", "makeup", "hair", "fashion", "outfit", "dress", "style", "wellness", "workout",
+                            "fitness", "diet", "weight loss", "symptoms", "sleep", "health", "travel", "hotel", "hotels", "destination",
+                            "destinations", "beach", "itinerary", "home decor", "garden", "gardening", "parenting", "relationship",
+                            "dating", "sex", "horoscope", "car", "cars", "suv", "ev", "electric vehicle", "sedan", "truck", "road test",
+                            "рецепта", "рецепти", "receta", "recette", "rezept"],
+    "EDUCATIONAL_PUBLISHER": ["definition", "meaning", "word of the day", "synonym", "synonyms", "how to", "tutorial", "examples",
+                              "explained", "what is", "lesson", "grammar", "learn", "course"],
+    "NEWS_PUBLISHER": ["president", "government", "minister", "election", "elections", "parliament", "police", "court", "judge",
+                       "war", "ukraine", "russia", "israel", "gaza", "trump", "biden", "eu", "nato", "killed", "attack", "crisis",
+                       "politics", "vote", "says", "protest", "law", "prime minister", "congress", "senate", "white house",
+                       "правителство", "министър", "президент", "избори", "полиция", "gobierno", "regierung", "gouvernement", "governo"],
+}
 TOOL_KEYWORDS = ["converter", "calculator", "translator", "generator", "checker", "downloader", "compress", "convert", "online tool",
                  "speed test", "weather", "timer", "editor", "lookup", "tracker", "калкулатор", "конвертор"]
-ECOM_PHRASES = ["add to cart", "add to bag", "add to basket", "shopping cart", "checkout", "free shipping", "in stock", "buy now", "shop now",
-                "добави в количката", "количка", "in den warenkorb", "ajouter au panier", "añadir al carrito"]
+ECOM_PHRASES = ["add to cart", "add to bag", "add to basket", "shopping cart", "checkout", "free shipping", "free delivery", "in stock",
+                "buy now", "shop now", "wishlist", "new arrivals", "shop all", "% off", "returns", "track order", "store locator",
+                "добави в количката", "количка", "in den warenkorb", "warenkorb", "versandkostenfrei", "zur kasse", "ajouter au panier",
+                "panier", "añadir al carrito", "carrito", "kosár", "koszyk", "košík", "carrello", "winkelwagen"]
+BANK_PHRASES = ["online banking", "log on", "log in to online banking", "current account", "savings account", "credit card", "credit cards",
+                "mortgage", "mortgages", "personal loan", "loans", "open an account", "business banking", "private banking", "wealth management",
+                "bank account", "sort code", "iban", "интернет банкиране", "кредити", "депозити", "сметки", "kredit", "girokonto"]
 SAAS_PHRASES = ["sign up", "log in", "login", "free trial", "start free", "request a demo", "book a demo", "get started", "pricing",
                 "for teams", "enterprise plan", "api docs"]
 CORP_PHRASES = ["careers", "investors", "investor relations", "our solutions", "our services", "contact sales", "our clients",
-                "about the company", "press releases", "sustainability report"]
+                "about the company", "press releases", "sustainability report", "industries", "what we do", "who we are", "case studies",
+                "client stories", "our company", "leadership", "annual report", "locations", "partners", "request a quote",
+                "get in touch", "newsroom", "jobs at", "join us", "our people", "capabilities"]
 PARKED_PHRASES = ["domain is for sale", "this domain may be for sale", "buy this domain", "domain for sale", "parked free", "this domain is parked",
                   "sedoparking", "parkingcrew", "bodis", "afternic", "dan.com", "hugedomains", "is available for purchase", "domain has expired"]
 FORUM_PHRASES = ["forum", "forums", "threads", "replies", "members online", "new posts", "latest posts", "community", "discussions", "форум"]
@@ -100,6 +142,30 @@ def _jsonld_types(doc) -> tuple[list[str], list[dict]]:
                     if k in cur:
                         stack.append(cur[k])
     return types, objs
+
+
+DOMAIN_TOPIC_WORDS = [  # words commonly fused into publisher domains (pcgamer, healthline, skysports, techradar...)
+    ("gamer", "GAMING_PUBLISHER"), ("gaming", "GAMING_PUBLISHER"), ("games", "GAMING_PUBLISHER"), ("sport", "SPORTS_PUBLISHER"),
+    ("football", "SPORTS_PUBLISHER"), ("soccer", "SPORTS_PUBLISHER"), ("tech", "TECHNOLOGY_PUBLISHER"), ("hardware", "TECHNOLOGY_PUBLISHER"),
+    ("gsm", "TECHNOLOGY_PUBLISHER"), ("android", "TECHNOLOGY_PUBLISHER"), ("recipe", "LIFESTYLE_PUBLISHER"), ("food", "LIFESTYLE_PUBLISHER"),
+    ("health", "LIFESTYLE_PUBLISHER"), ("travel", "LIFESTYLE_PUBLISHER"), ("caranddriver", "LIFESTYLE_PUBLISHER"), ("motor", "LIFESTYLE_PUBLISHER"),
+    ("auto", "LIFESTYLE_PUBLISHER"), ("money", "FINANCE_PUBLISHER"), ("invest", "FINANCE_PUBLISHER"), ("finance", "FINANCE_PUBLISHER"),
+    ("stock", "FINANCE_PUBLISHER"), ("dictionary", "EDUCATIONAL_PUBLISHER"), ("schools", "EDUCATIONAL_PUBLISHER"),
+    ("hollywood", "ENTERTAINMENT_PUBLISHER"), ("movie", "ENTERTAINMENT_PUBLISHER"), ("screen", "ENTERTAINMENT_PUBLISHER"),
+    ("news", "NEWS_PUBLISHER"), ("novini", "NEWS_PUBLISHER"),
+]
+
+
+def topic_counts(texts: list[str], vocab: dict[str, list[str]]) -> dict[str, int]:
+    """Number of texts mentioning each topic (each text counts at most once per topic)."""
+    pats = {t: re.compile(r"(?<![\w])(" + "|".join(re.escape(w) for w in words) + r")(?![\w])", re.I) for t, words in vocab.items() if words}
+    out: dict[str, int] = {}
+    for text in texts:
+        low = text.lower()
+        for t, pat in pats.items():
+            if pat.search(low):
+                out[t] = out.get(t, 0) + 1
+    return out
 
 
 def _types_of(obj: dict) -> set[str]:
@@ -180,6 +246,8 @@ def extract(html: str, url: str) -> dict[str, Any]:
     # links
     anchors = doc.xpath("//a[@href]")
     internal, article_like, dated = set(), set(), set()
+    headlines: list[str] = []
+    cart_links, product_links = 0, set()
     for a in anchors:
         href = urljoin(url, a.get("href").strip())
         parts = urlsplit(href)
@@ -191,12 +259,29 @@ def extract(html: str, url: str) -> dict[str, Any]:
         if path in ("/", ""):
             continue
         internal.add(path)
+        lp = path.lower()
+        if _CART_RE.search(lp):
+            cart_links += 1
+        if _PRODUCT_RE.search(lp):
+            product_links.add(lp)
+        is_article = False
         if _DATE_PATH_RE.search(path):
             dated.add(href)
             article_like.add(href)
-        elif _SLUG_RE.search(path.lower()) or _ID_ARTICLE_RE.search(path):
+            is_article = True
+        elif _SLUG_RE.search(lp) or _ID_ARTICLE_RE.search(path):
             article_like.add(href)
+            is_article = True
+        if is_article and len(headlines) < 120:
+            t = _WS_RE.sub(" ", a.text_content() or "").strip()
+            if 15 <= len(t) <= 220:
+                headlines.append(t)
     f["internal_link_count"] = len(internal)
+    f["cart_links"] = cart_links
+    f["product_link_count"] = len(product_links)
+    f["headline_count"] = len(headlines)
+    f["headline_topics"] = topic_counts(headlines, HEADLINE_KEYWORDS)
+    f["headline_sample"] = headlines[:12]
     f["article_link_count"] = len(article_like)
     f["dated_link_count"] = len(dated)
     f["article_link_sample"] = sorted(article_like, key=lambda u: (u not in dated, -len(u)))[:10]
@@ -241,6 +326,15 @@ def extract(html: str, url: str) -> dict[str, Any]:
             if re.search(r"(?<![\w])" + re.escape(w) + r"(?![\w])", topic_text):
                 topics[cat] += 2 if w in low_title else 1
     f["topic_hits"] = dict(topics)
+    # identity: what the site says it is (title, description, site name) plus words inside the domain
+    ident_vocab = {k: list(dict.fromkeys(TOPIC_KEYWORDS.get(k, []) + HEADLINE_KEYWORDS.get(k, []))) for k in set(TOPIC_KEYWORDS) | set(HEADLINE_KEYWORDS)}
+    ident = topic_counts([low_title], ident_vocab)
+    dom = base_host.rsplit(".", 1)[0].replace("-", "").replace(".", "")
+    for word, topic in DOMAIN_TOPIC_WORDS:
+        if word in dom:
+            ident[topic] = ident.get(topic, 0) + 1
+    f["identity_topics"] = ident
+    f["bank_phrases"] = count(BANK_PHRASES, (nav_text + " " + low[:30_000]))
 
     # technology fingerprints (static) used as classification signals only
     reg = load_registry()

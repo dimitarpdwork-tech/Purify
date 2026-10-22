@@ -149,7 +149,7 @@ class SafeFetcher:
             follow_redirects=False,
             timeout=httpx.Timeout(self.settings.http_timeout_seconds),
             headers={
-                "User-Agent": self.settings.user_agent,
+                "User-Agent": self.settings.http_user_agent,
                 "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
                 "Accept-Language": "en;q=0.8,*;q=0.5",
             },
@@ -170,18 +170,27 @@ class SafeFetcher:
         if key not in self._robots:
             rp: RobotFileParser | None = None
             res = await self._raw_get(urljoin(key, "/robots.txt"), max_bytes=500_000, check_robots=False)
-            if res.status and 200 <= res.status < 300 and not res.error:
+            # RFC 9309 sec. 2.3.1: 2xx -> parse; 4xx (except 429) "unavailable" -> no restrictions;
+            # 5xx, 429 or network error "unreachable" -> assume complete disallow (retry on a later run).
+            if res.blocked:  # our own SSRF policy refused it: the page itself will be refused too
+                rp = None
+            elif res.status is None and res.error and ("ConnectError" in res.error or "DNS resolution failed" in res.error):
+                # nothing listening / host unknown on this scheme: the page request will fail with its own,
+                # more useful error (and http:// may still work). Not cached.
+                return True
+            elif res.status and 200 <= res.status < 300 and not res.error:
                 rp = RobotFileParser()
                 rp.parse(res.text().splitlines())
-            elif res.status in (401, 403):
+            elif res.status and 400 <= res.status < 500 and res.status != 429:
+                rp = None
+            else:
                 rp = RobotFileParser()
                 rp.disallow_all = True
-            # 404 / errors -> treat as no restrictions (RFC 9309 sec. 2.3.1.3)
             self._robots[key] = rp
         rp = self._robots[key]
         if rp is None:
             return True
-        return rp.can_fetch(self.settings.user_agent, url)
+        return rp.can_fetch(self.settings.robots_token, url)
 
     # ------------------------------------------------------------------ fetching
     async def get(self, url: str, *, max_bytes: int | None = None, check_robots: bool = True) -> FetchResult:

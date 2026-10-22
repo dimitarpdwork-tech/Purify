@@ -31,9 +31,11 @@ class Settings(BaseSettings):
     data_dir: str = "/data"  # uploads, dataset caches, raw evidence
 
     # --- crawling policy ---
-    user_agent: str = (
-        "PurifyPublisherIntelligence/1.0 (+https://purify.digital/bot; publisher research)"
-    )
+    # Bot identity. Sent to websites in the standard crawler format
+    # "Mozilla/5.0 (compatible; <user_agent>)" (static fetches) and appended to the browser's own
+    # user agent (rendered scans). robots.txt rules are matched on `robots_token`.
+    user_agent: str = "PurifyPublisherIntelligence/1.0 (+https://purify.digital/bot; publisher research)"
+    robots_token: str = "PurifyPublisherIntelligence"
     respect_robots_txt: bool = True
     http_timeout_seconds: float = 15.0
     http_max_bytes: int = 3_000_000
@@ -72,6 +74,11 @@ class Settings(BaseSettings):
         "https://sharethrough.com/sellers.json"
     )
     sellers_json_max_bytes: int = 400_000_000
+
+    @property
+    def http_user_agent(self) -> str:
+        ua = self.user_agent.strip()
+        return ua if ua.lower().startswith("mozilla/") else f"Mozilla/5.0 (compatible; {ua})"
 
     @model_validator(mode="after")
     def _build_database_url(self) -> "Settings":

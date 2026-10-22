@@ -48,7 +48,9 @@ class _Acc:
         self.ev.append({"hypothesis": hyp, "weight": w, "signal": signal, "value": value})
 
 
-def classify(host: str, pages: list[dict[str, Any]], fetch_ok: bool = True, blocked_reason: str | None = None) -> ClassificationResult:
+def classify(host: str, pages: list[dict[str, Any]], fetch_ok: bool = True, blocked_reason: str | None = None,
+             ads_txt_records: int | None = None) -> ClassificationResult:
+    """`ads_txt_records`: number of ads.txt records (None = unknown / not fetched)."""
     good = [p for p in pages if not p.get("empty") and not p.get("unparseable")]
     urls = [p.get("url") for p in pages if p.get("url")]
     if not fetch_ok or not good:
@@ -73,7 +75,7 @@ def classify(host: str, pages: list[dict[str, Any]], fetch_ok: bool = True, bloc
         a.add("parked", 3 + len(home["parked_phrases"]), "parking/for-sale phrases", home["parked_phrases"])
         if home.get("word_count", 0) < 300:
             a.add("parked", 2, "very little page text", home.get("word_count"))
-    if host.endswith(GOV_SUFFIXES):
+    if host.endswith(GOV_SUFFIXES) or ("." + host) in GOV_SUFFIXES:
         a.add("government", 8, "government domain suffix", host)
     if types & GOV_SCHEMA:
         a.add("government", 4, "GovernmentOrganization schema", sorted(types & GOV_SCHEMA))
@@ -113,7 +115,10 @@ def classify(host: str, pages: list[dict[str, Any]], fetch_ok: bool = True, bloc
         a.add("publisher", 1, "sampled content pages have substantial text", [p.get("word_count") for p in deep])
     ad_cats = {k for k in tech if k in ("ad_server", "adsense", "header_bidding", "monetization_partner", "ssp", "native")}
     if ad_cats:
-        a.add("publisher", 1.5, "advertising technology referenced in page", sorted(ad_cats))
+        a.add("publisher", 2, "advertising technology referenced in page", sorted(ad_cats))
+    if ads_txt_records:
+        a.add("publisher", 3, "ads.txt authorises ad sellers", ads_txt_records)
+    has_ad_evidence = bool(ad_cats) or bool(ads_txt_records)
 
     # ---------------- forum
     if tech.get("forum_software"):
@@ -138,6 +143,12 @@ def classify(host: str, pages: list[dict[str, Any]], fetch_ok: bool = True, bloc
         a.add("ecommerce", 1, "shopping wording", home["ecom_phrases"])
     if home.get("price_mentions", 0) >= 10:
         a.add("ecommerce", 2, "many price mentions", home["price_mentions"])
+    if home.get("cart_links"):
+        a.add("ecommerce", 2, "links to a shopping cart / basket", home["cart_links"])
+    if home.get("product_link_count", 0) >= 8:
+        a.add("ecommerce", 3, "many product page links", home["product_link_count"])
+    if len(home.get("bank_phrases", [])) >= 3:
+        a.add("corporate", 5, "banking products (accounts, loans, cards, online banking)", home["bank_phrases"][:6])
 
     # ---------------- SaaS
     if types & SAAS_SCHEMA:
@@ -164,6 +175,15 @@ def classify(host: str, pages: list[dict[str, Any]], fetch_ok: bool = True, bloc
     ranking = sorted(s.items(), key=lambda kv: kv[1], reverse=True)
     top, top_score = ranking[0]
     second, second_score = ranking[1]
+    # Corporate blogs, retailers' editorial pages and SaaS "resources" sections produce article signals too.
+    # Without any advertising evidence (no ad tech in the page, no ads.txt sellers), a credible business
+    # hypothesis wins; the editorial side is kept as a secondary category.
+    if top == "publisher" and not has_ad_evidence:
+        biz = max(("corporate", "ecommerce", "saas"), key=lambda k: s[k])
+        if s[biz] >= 4:
+            a.add(biz, 0, "no advertising evidence (no ad tech, no ads.txt sellers) on a site with business signals")
+            top, top_score = biz, s[biz]
+            second, second_score = "publisher", s["publisher"]
 
     if top_score < 3:
         result_cat = "UNKNOWN" if home.get("word_count", 0) < 150 else "OTHER"
@@ -211,32 +231,53 @@ def classify(host: str, pages: list[dict[str, Any]], fetch_ok: bool = True, bloc
 
 
 def _topic(home, others, all_types, default: str | None = "GENERAL_CONTENT_PUBLISHER") -> str | None:
-    hits = dict(home.get("topic_hits", {}))
+    """Pick the publisher niche.
+
+    1. Headlines (what the site actually publishes) decide when one niche clearly dominates.
+    2. Otherwise the site's identity (title / domain words) decides when it names exactly one niche.
+    3. Otherwise a site with news schema / news vocabulary is a general news publisher.
+    Navigation menus are only a last resort: big news sites link to every section.
+    """
+    niche = ["GAMING_PUBLISHER", "SPORTS_PUBLISHER", "ENTERTAINMENT_PUBLISHER", "TECHNOLOGY_PUBLISHER", "FINANCE_PUBLISHER",
+             "LIFESTYLE_PUBLISHER", "EDUCATIONAL_PUBLISHER"]
+    head: dict[str, int] = dict(home.get("headline_topics") or {})
+    n_head = int(home.get("headline_count") or 0)
     for p in others:
-        for k, v in (p.get("topic_hits") or {}).items():
-            hits[k] = hits.get(k, 0) + 0.5 * v
-    if all_types & NEWS_SCHEMA:
-        hits["NEWS_PUBLISHER"] = hits.get("NEWS_PUBLISHER", 0) + 3
+        for k, v in (p.get("headline_topics") or {}).items():
+            head[k] = head.get(k, 0) + v
+        n_head += int(p.get("headline_count") or 0)
+    ident: dict[str, int] = dict(home.get("identity_topics") or {})
     if "Recipe" in all_types:
-        hits["LIFESTYLE_PUBLISHER"] = hits.get("LIFESTYLE_PUBLISHER", 0) + 3
+        head["LIFESTYLE_PUBLISHER"] = head.get("LIFESTYLE_PUBLISHER", 0) + 5
     if "VideoGame" in all_types:
-        hits["GAMING_PUBLISHER"] = hits.get("GAMING_PUBLISHER", 0) + 3
-    if not hits:
-        return default
-    # Broad news sites link to many sections (food, travel, fashion...). One section's vocabulary
-    # must not outvote the site's identity: cap each topic, and a site with news schema covering
-    # several topic areas is a general news publisher.
-    hits = {k: min(v, 4) for k, v in hits.items()}
-    breadth = sum(1 for k, v in hits.items() if v >= 1 and k != "NEWS_PUBLISHER")
-    if all_types & NEWS_SCHEMA and breadth >= 3:
+        head["GAMING_PUBLISHER"] = head.get("GAMING_PUBLISHER", 0) + 5
+
+    tagged = sum(head.values())
+    ident_niche = [t for t in niche if ident.get(t)]
+    if n_head >= 5 and tagged:
+        share = {t: head.get(t, 0) / tagged for t in niche}
+        best = max(niche, key=lambda t: (share[t], t in ident_niche))
+        news_share = head.get("NEWS_PUBLISHER", 0) / tagged
+        if share[best] >= 0.4 and share[best] > news_share:
+            return best
+    # Title names exactly one niche. If the title also says "news" ("Video Game News", "News, sport and
+    # opinion"), the headlines must lean towards the niche rather than towards general news.
+    if len(ident_niche) == 1:
+        t = ident_niche[0]
+        if ident.get("NEWS_PUBLISHER"):
+            if head.get(t, 0) >= 2 and head.get(t, 0) > head.get("NEWS_PUBLISHER", 0):
+                return t
+        elif not (n_head >= 5 and tagged) or head.get(t, 0) / max(tagged, 1) >= 0.15:
+            return t
+    if all_types & NEWS_SCHEMA or ident.get("NEWS_PUBLISHER") or (tagged and head.get("NEWS_PUBLISHER", 0) / tagged >= 0.3):
         return "NEWS_PUBLISHER"
-    best = max(hits.items(), key=lambda kv: kv[1])
-    if best[1] < 2:
-        return default
-    # broad news sites mention many sections; keep NEWS when it is close to the top
-    if hits.get("NEWS_PUBLISHER", 0) >= best[1] - 1 and hits.get("NEWS_PUBLISHER", 0) >= 3:
-        return "NEWS_PUBLISHER"
-    return best[0]
+    # last resort: navigation / title keyword hits (capped so one section cannot dominate)
+    hits = {k: min(v, 4) for k, v in (home.get("topic_hits") or {}).items()}
+    if hits:
+        best_k, best_v = max(hits.items(), key=lambda kv: kv[1])
+        if best_v >= 2:
+            return best_k
+    return default
 
 
 def as_record(res: ClassificationResult) -> dict[str, Any]:

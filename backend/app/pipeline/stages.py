@@ -196,7 +196,13 @@ async def _classify_batch(ids: list[int]) -> None:
     async def one(w: Website):
         async with sem:
             try:
-                return w, await _fetch_site_pages(fetcher, w, s.classification_max_pages), None
+                results, feats, problem = await _fetch_site_pages(fetcher, w, s.classification_max_pages)
+                ads_count = None
+                if feats:  # ads.txt is strong evidence of an ad-supported site (cheap: one request)
+                    host = urlsplit(feats[0]["url"]).hostname or w.host
+                    _r, st, parsed = await _fetch_ads_txt(fetcher, host)
+                    ads_count = len(parsed.records) if parsed else (0 if st in ("NOT_FOUND", "EMPTY", "NOT_TEXT") else None)
+                return w, (results, feats, problem, ads_count), None
             except Exception as exc:  # noqa: BLE001
                 return w, None, exc
 
@@ -213,7 +219,8 @@ async def _classify_batch(ids: list[int]) -> None:
             claims.fail(w.id, "classify", f"persist: {type(e).__name__}: {e}")
 
 
-def _persist_classification(wid: int, results: list[FetchResult], feats: list[dict[str, Any]], problem: str | None) -> None:
+def _persist_classification(wid: int, results: list[FetchResult], feats: list[dict[str, Any]], problem: str | None,
+                            ads_txt_records: int | None = None) -> None:
     fail_msg: str | None = None
     with session_scope() as db:
         w = db.get(Website, wid)
@@ -241,7 +248,7 @@ def _persist_classification(wid: int, results: list[FetchResult], feats: list[di
                 w.canonical_host = final_host
                 w.preferred_origin = f"{fp.scheme or 'https'}://{final_host}"
 
-        res = rules.classify(w.host, feats, fetch_ok=bool(feats), blocked_reason=problem)
+        res = rules.classify(w.host, feats, fetch_ok=bool(feats), blocked_reason=problem, ads_txt_records=ads_txt_records)
         has_previous = db.scalar(select(func.count()).select_from(WebsiteClassification).where(
             WebsiteClassification.website_id == wid, WebsiteClassification.is_current.is_(True)))
         usable = res.primary_category != "UNKNOWN" or not has_previous
@@ -254,7 +261,9 @@ def _persist_classification(wid: int, results: list[FetchResult], feats: list[di
                 "scores": res.scores,
                 "home": {k: home.get(k) for k in ("title", "description", "og_site_name", "html_lang", "schema_types", "feed_links",
                                                   "article_link_count", "article_link_sample", "business_links", "org_names", "tech",
-                                                  "word_count", "topic_hits")},
+                                                  "word_count", "topic_hits", "identity_topics", "headline_topics",
+                                                  "headline_count", "headline_sample")},
+                "ads_txt_records": ads_txt_records,
                 "pages": [{"url": f.get("url"), "word_count": f.get("word_count"), "schema_types": f.get("schema_types"),
                            "has_published_time": f.get("has_published_time")} for f in feats],
                 "country_signals": feat.country_signals(feats, w.host),
@@ -530,7 +539,7 @@ def _persist_adtech(wid: int, renders: list[Any], render_error: str | None) -> N
         ok_renders = [r for r in renders if r.ok and r.html]
         if (cls is None or cls.primary_category == "UNKNOWN") and ok_renders:
             fs = [feat.extract_safe(r.html, r.final_url or r.url) for r in ok_renders]
-            res = rules.classify(w.host, fs)
+            res = rules.classify(w.host, fs, ads_txt_records=(ads_file.record_count if ads_file else None))
             if res.primary_category != "UNKNOWN":
                 db.execute(update(WebsiteClassification).where(WebsiteClassification.website_id == wid).values(is_current=False))
                 rec = rules.as_record(res)

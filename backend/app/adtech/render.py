@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 
 from app.adtech.registry import load_registry
 from app.core.config import get_settings
-from app.services.safe_fetch import FetchBlocked, resolve_public
+from app.services.safe_fetch import FetchBlocked, SafeFetcher, resolve_public
 
 log = logging.getLogger(__name__)
 
@@ -226,6 +226,8 @@ class Renderer:
         self._pw = None
         self._browser = None
         self._sem = asyncio.Semaphore(max(1, self.s.playwright_concurrency))
+        self._robots: SafeFetcher | None = None
+        self._ua: str | None = None
 
     async def __aenter__(self) -> "Renderer":
         from playwright.async_api import async_playwright
@@ -236,9 +238,18 @@ class Renderer:
         if exe:
             kwargs["executable_path"] = exe
         self._browser = await self._pw.chromium.launch(**kwargs)
+        # Identify honestly: the browser's normal UA (without the "Headless" marker) plus our bot token,
+        # the same convention major crawlers use.
+        major = (self._browser.version or "").split(".")[0] or "120"
+        self._ua = (f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 "
+                    f"Safari/537.36 {self.s.user_agent}")
+        if self.s.respect_robots_txt:
+            self._robots = await SafeFetcher().__aenter__()
         return self
 
     async def __aexit__(self, *exc) -> None:
+        if self._robots is not None:
+            await self._robots.__aexit__(None, None, None)
         try:
             if self._browser:
                 await self._browser.close()
@@ -257,8 +268,11 @@ class Renderer:
         if not await guard.allowed(url):
             res.blocked_reason = "SSRF guard: target not allowed"
             return res
+        if self._robots is not None and not await self._robots.allowed_by_robots(url):
+            res.blocked_reason = "robots.txt disallows"
+            return res
         ctx = await self._browser.new_context(
-            user_agent=self.s.user_agent + " HeadlessChromium",
+            user_agent=self._ua or self.s.http_user_agent,
             viewport={"width": 1366, "height": 900},
             java_script_enabled=True,
             service_workers="block",

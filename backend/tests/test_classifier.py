@@ -109,3 +109,73 @@ def test_broad_news_site_with_lifestyle_sections_is_news():
         "".join(f'<article><a href="/world/2026/oct/{i}/story-about-many-things-{i}">s</a></article>' for i in range(1, 30)) + "</body></html>"
     res = classify("theguardian.com", [extract(html, "https://www.theguardian.com/europe")])
     assert res.primary_category == "NEWS_PUBLISHER"
+
+
+# ---- regressions from the 116-site live run (2026-10-22) -----------------------------------------
+def _page(title, headlines, extra="", nav="", schema='{"@type":"NewsMediaOrganization","name":"X"}', path="/news"):
+    links = "".join(f'<article><a href="{path}/{i}-{h.lower().replace(" ", "-")[:60]}">{h}</a></article>' for i, h in enumerate(headlines))
+    return (f'<html lang="en"><head><title>{title}</title><script type="application/ld+json">{schema}</script></head>'
+            f'<body><nav>{nav}</nav>{links}{extra}</body></html>')
+
+
+BROAD_NAV = "".join(f'<a href="/{x}">{x}</a>' for x in ["News", "Sport", "Culture", "Lifestyle", "Food", "Travel", "Money", "Tech", "Games", "Film"])
+
+
+@pytest.mark.parametrize("host,title,heads,expected", [
+    ("ign.com", "IGN: Video Game News, Reviews and Walkthroughs",
+     ["Zelda remake gets PS5 and Xbox release date", "Best RPG games of 2026 ranked", "Elden Ring DLC boss fight guide",
+      "Nintendo Switch 2 sales top 20 million", "Call of Duty multiplayer patch notes", "Minecraft update adds new biome",
+      "Marvel movie trailer breakdown"], "GAMING_PUBLISHER"),
+    ("espn.com", "ESPN - Serving Sports Fans. Anytime. Anywhere.",
+     ["Chiefs quarterback ruled out of playoff game", "NBA trade deadline winners", "Premier League title race heats up",
+      "Transfer news: striker joins rival club", "UFC champion defends belt", "Golf: leader after round two"], "SPORTS_PUBLISHER"),
+    ("variety.com", "Variety - Entertainment News, Film Reviews, Awards",
+     ["Box office: new Marvel movie tops weekend", "Netflix renews drama for third season", "Oscar race: actress buzz grows",
+      "Singer announces world tour and album", "HBO series finale draws record audience", "Hollywood studio cuts film slate"],
+     "ENTERTAINMENT_PUBLISHER"),
+    ("theguardian.com", "News, sport and opinion from the Guardian's global edition",
+     ["Prime minister faces vote on budget", "Ukraine war: Russia launches new attack", "Court rules on election law challenge",
+      "Police arrest protest leaders", "Premier League: derby ends in draw", "EU leaders meet on migration crisis",
+      "Recipe: autumn salad"], "NEWS_PUBLISHER"),
+    ("delish.com", "Delish: Recipes, Cooking Tips and Food News",
+     ["Easy chicken dinner recipe", "Best chocolate cake you will ever bake", "Five minute salad for busy weeknights",
+      "Our favourite dessert recipes this fall", "How to cook perfect rice", "Grocery prices rise again, says report"], "LIFESTYLE_PUBLISHER"),
+])
+def test_niche_from_headlines(host, title, heads, expected):
+    res = classify(host, [extract(_page(title, heads, nav=BROAD_NAV), f"https://www.{host}/")], ads_txt_records=50)
+    assert res.primary_category == expected
+
+
+def test_corporate_insights_site_without_ads_is_corporate():
+    """accenture/deloitte-style: article schema + many insight articles, but corporate nav and no ad evidence."""
+    nav = "".join(f'<a href="/{x.lower().replace(" ", "-")}">{x}</a>' for x in
+                  ["Insights", "Industries", "Services", "Careers", "Investors", "About us", "Case studies", "Newsroom", "Contact us"])
+    html = _page("Accenture | Let there be change", [f"How AI transforms the enterprise supply chain part {i}" for i in range(20)],
+                 nav=nav, schema='{"@type":"Article"}', path="/insights")
+    res = classify("accenture.com", [extract(html, "https://www.accenture.com/")], ads_txt_records=0)
+    assert res.primary_category == "CORPORATE" and res.is_publisher is False
+    # the same page WITH ad sellers in ads.txt stays a publisher
+    res2 = classify("accenture.com", [extract(html, "https://www.accenture.com/")], ads_txt_records=40)
+    assert res2.is_publisher is True
+
+
+def test_retailer_with_cart_and_products_is_ecommerce():
+    links = "".join(f'<a href="/p/sneaker-model-{i}">Sneaker {i} 89,95 €</a>' for i in range(15))
+    html = f'<html lang="de"><head><title>Zalando: Mode & Schuhe online kaufen</title></head><body><nav><a href="/cart">Warenkorb</a>' \
+           f'<a href="/damen">Damen</a></nav>{links}' + "".join(f'<a href="/magazin/{i}-style-trends-for-the-autumn-season">Style trends for the autumn season {i}</a>' for i in range(10)) + '</body></html>'
+    res = classify("zalando.de", [extract(html, "https://www.zalando.de/")], ads_txt_records=0)
+    assert res.primary_category == "ECOMMERCE"
+
+
+def test_bank_is_not_a_finance_publisher():
+    html = _page("HSBC UK - Personal & Online Banking", [f"Five ways to save money this winter tip {i}" for i in range(15)],
+                 extra="<p>Online banking. Log on. Current account, savings account, credit cards, mortgages, personal loan.</p>",
+                 nav='<a href="/accounts">Current account</a><a href="/mortgages">Mortgages</a><a href="/loans">Loans</a>',
+                 schema='{"@type":"Article"}', path="/help")
+    res = classify("hsbc.co.uk", [extract(html, "https://www.hsbc.co.uk/")], ads_txt_records=0)
+    assert res.is_publisher is False
+
+
+def test_government_registrable_root_host():
+    res = classify("gov.bg", [extract(_page("Портал за правителство", ["Министерски съвет прие решение"] * 8), "https://gov.bg/")])
+    assert res.primary_category == "GOVERNMENT"

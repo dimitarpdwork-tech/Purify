@@ -34,7 +34,7 @@ def download(url: str, dest: Path, max_bytes: int = 600_000_000, timeout: float 
     """Stream a public dataset to disk (resumes nothing; atomically renames on success)."""
     tmp = dest.with_suffix(dest.suffix + ".part")
     with httpx.stream("GET", url, timeout=timeout, follow_redirects=True,
-                      headers={"User-Agent": get_settings().user_agent}) as r:
+                      headers={"User-Agent": get_settings().http_user_agent}) as r:
         r.raise_for_status()
         size = 0
         with open(tmp, "wb") as fh:

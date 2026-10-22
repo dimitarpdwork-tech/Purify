@@ -38,6 +38,16 @@ from app.services.normalize import normalize
 from app.services.safe_fetch import SafeFetcher
 
 BENCH = Path(__file__).resolve().parent.parent / "benchmark" / "benchmark_sites.csv"
+OUTDIR: Path | None = None
+
+
+def _save_html(host: str, kind: str, html: str) -> None:
+    """Keep the homepage HTML (gzipped) with the report so rules can be tuned on real pages offline."""
+    import gzip
+
+    d = OUTDIR / "html"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{host}.{kind}.html.gz").write_bytes(gzip.compress(html[:3_000_000].encode("utf-8", errors="replace")))
 
 
 def _ws(host: str) -> Website:
@@ -102,11 +112,14 @@ async def _evaluate_site(row: dict, fetcher: SafeFetcher, renderer, sem: asyncio
         results, feats, problem = await _fetch_site_pages(fetcher, w, s.classification_max_pages)
         res["static"] = {"pages_ok": len(feats), "problem": problem,
                          "attempts": [{"url": r.url, "final": r.final_url, "status": r.status, "error": r.error, "blocked": r.blocked} for r in results]}
-        cls = rules.classify(w.host, feats, fetch_ok=bool(feats), blocked_reason=problem)
+        ar, astatus, parsed = await _fetch_ads_txt(fetcher, urlsplit(w.preferred_origin).hostname or w.host)
+        ads_count = len(parsed.records) if parsed else (0 if astatus in ("NOT_FOUND", "EMPTY", "NOT_TEXT") else None)
+        cls = rules.classify(w.host, feats, fetch_ok=bool(feats), blocked_reason=problem, ads_txt_records=ads_count)
         res["classification"] = {"category": cls.primary_category, "is_publisher": cls.is_publisher, "confidence": cls.confidence,
                                  "secondary": cls.secondary_categories, "top_signals": [e["signal"] for e in cls.supporting[:6]],
-                                 "contradictory": [e.get("signal") for e in cls.contradictory[:4]]}
-        ar, astatus, parsed = await _fetch_ads_txt(fetcher, urlsplit(w.preferred_origin).hostname or w.host)
+                                 "contradictory": [e.get("signal") for e in cls.contradictory[:4]],
+                                 "headline_topics": (feats[0].get("headline_topics") if feats else None),
+                                 "identity_topics": (feats[0].get("identity_topics") if feats else None)}
         res["ads_txt"] = {"status": astatus, "records": len(parsed.records) if parsed else 0, "malformed": len(parsed.malformed) if parsed else 0,
                           "variables": {k: v[:3] for k, v in (parsed.variables.items() if parsed else [])}}
         ads_obs = AdsTxtObservation(astatus, [{"ad_system_domain": r.ad_system_domain, "seller_account_id": r.seller_account_id,
@@ -115,6 +128,8 @@ async def _evaluate_site(row: dict, fetcher: SafeFetcher, renderer, sem: asyncio
         for r in results:
             if r.ok and "html" in (r.content_type or ""):
                 static_obs.append(PageObservation(url=r.final_url, ok=True, html=r.text()))
+        if static_obs and OUTDIR:
+            _save_html(host, "static", static_obs[0].html)
         pages = static_obs
         res["render"] = None
         if renderer is not None:
@@ -135,6 +150,8 @@ async def _evaluate_site(row: dict, fetcher: SafeFetcher, renderer, sem: asyncio
                                           "requested": p.get("requested_bidders")} for p in (x.page.get("prebid") or [])],
                               "gpt_slots": len(((x.page.get("gpt") or {}).get("slots")) or []),
                               "consent": x.page.get("consent"), "consent_action": x.page.get("consent_action")} for x in rr]
+            if rr and rr[0].ok and rr[0].html and OUTDIR:
+                _save_html(host, "rendered", rr[0].html)
             if cls.primary_category == "UNKNOWN" and any(x.ok and x.html for x in rr):
                 fs = [feat.extract_safe(x.html, x.final_url or x.url) for x in rr if x.ok and x.html]
                 c2 = rules.classify(w.host, fs)
@@ -190,8 +207,15 @@ def write_report(outdir: Path, infra: list[dict], results: list[dict], rendered:
              "`benchmark/benchmark_sites.csv` were curated by hand and should be reviewed.", "",
              "## Infrastructure checks", ""]
     lines += [f"- {'PASS' if c['ok'] else 'FAIL'} - {c['check']}: {c['detail']}" for c in infra]
+    judged = [r for r in results if r["classification"]["category"] not in ("UNKNOWN", "ERROR")]
+    pub_ok = sum(1 for r in judged if bool(r["classification"]["is_publisher"]) == r["expected_is_publisher"])
+    pubs = [r for r in judged if r["expected_is_publisher"] and r["classification"]["is_publisher"]]
+    niche_ok = sum(1 for r in pubs if accept(r, r["classification"]["category"], None))
     lines += ["", "## Classification", "",
               f"- sites evaluated: {n}",
+              f"- **publisher vs non-publisher correct (sites the robot could read): {pub_ok}/{len(judged)} "
+              f"({100 * pub_ok / max(len(judged), 1):.0f}%)**",
+              f"- niche correct among correctly found publishers: {niche_ok}/{len(pubs)} ({100 * niche_ok / max(len(pubs), 1):.0f}%)",
               f"- category matches expectation: {len(correct)}/{n} ({100 * len(correct) / max(n, 1):.0f}%)",
               f"- publisher precision: {pub_tp}/{pub_tp + pub_fp} ; publisher misses (classified non-publisher): {pub_fn}",
               f"- UNKNOWN (no usable content - blocked/challenge/failed): {unknown}",
@@ -229,6 +253,8 @@ async def main() -> int:
         return 2
     outdir = Path(s.data_dir) / "validation" / dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     outdir.mkdir(parents=True, exist_ok=True)
+    global OUTDIR
+    OUTDIR = outdir
     print(f"== infrastructure checks (report: {outdir})")
     infra = await infra_checks()
 

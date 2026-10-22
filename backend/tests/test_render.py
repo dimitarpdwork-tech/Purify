@@ -95,3 +95,18 @@ def test_accept_mode_handles_sourcepoint_style_iframe(site_server, monkeypatch):
     assert r.page["consent_action"]["clicked"] == "button.sp_choice_type_11"
     res = {v.vendor_key: v for v in detect([_obs(r)])}
     assert res["prebid"].status == ACTIVE and res["pubmatic"].status == ACTIVE
+
+
+def test_renderer_respects_robots_txt(site_server, monkeypatch, tmp_path):
+    """The browser scan must obey robots.txt just like static fetching."""
+    from app.core.config import get_settings
+
+    (SITE / "robots.txt").write_text("User-agent: PurifyPublisherIntelligence\nDisallow: /private.html\n")
+    try:
+        monkeypatch.setenv("RESPECT_ROBOTS_TXT", "true")
+        get_settings.cache_clear()
+        r = _render(site_server + "/private.html")
+        assert r.blocked_reason == "robots.txt disallows" and not r.ok
+        assert _render(site_server + "/index.html").ok
+    finally:
+        (SITE / "robots.txt").unlink()
