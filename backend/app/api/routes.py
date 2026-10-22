@@ -521,6 +521,14 @@ def create_job_ep(body: JobIn, db: Session = Depends(get_db), user: User = Depen
         raise HTTPException(400, f"kind must be one of {sorted(JOB_KINDS_USER)}")
     if body.kind == "requeue_stage" and body.params.get("stage") not in ("qualify", "classify", "supply", "adtech", "score"):
         raise HTTPException(400, "requeue_stage needs params.stage")
+    if body.kind in ("crux_ingest", "tranco_ingest"):
+        p = body.params
+        for k in ("max_bucket", "exclude_top", "limit", "max_rank"):
+            if p.get(k) not in (None, "") and (not str(p[k]).isdigit() or int(p[k]) < 0):
+                raise HTTPException(400, f"{k} must be a positive number")
+        if p.get("exclude_top") and p.get("max_bucket") and int(p["exclude_top"]) >= int(p["max_bucket"]):
+            raise HTTPException(400, "the 'start after' band must be smaller than the max band")
+        body.params["requested"] = True  # started by a person: their chosen range bypasses the popularity gate
     jid = create_job(body.kind, body.params, user.id)
     run_job_task.delay(jid)
     audit(db, user, "create_job", "job", jid, body.model_dump())

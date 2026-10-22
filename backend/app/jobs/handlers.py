@@ -58,12 +58,18 @@ def _flush(ctx: JobContext, batch: list[Discovered], row_no: int, **extra: Any) 
 # ------------------------------------------------------------------ CrUX
 @handler("crux_ingest")
 def crux_ingest(ctx: JobContext) -> None:
+    """params: country?, max_bucket, exclude_top? (skip sites in this band or higher, e.g. 10000 = start after
+    the top 10K), limit? (stop after N websites, most popular bands first), requested? (started by a user)."""
     country = ctx.params.get("country") or None
     max_bucket = int(ctx.params.get("max_bucket") or get_settings().crux_max_rank_bucket)
+    exclude_top = int(ctx.params.get("exclude_top") or 0)
+    limit = int(ctx.params.get("limit") or 0)
+    requested = bool(ctx.params.get("requested"))
     period = ctx.params.get("period") or ctx.checkpoint.get("period") or datasets.crux_latest_period(country)
     path, url = datasets.fetch_crux(period, country)
     ctx.save(checkpoint={"period": period}, source_url=url)
     start = int(ctx.checkpoint.get("row", 0))
+    accepted = int(ctx.progress.get("accepted", 0))
     batch: list[Discovered] = []
     last = start
     ref = f"crux:{country or 'global'}:{period}"
@@ -71,21 +77,28 @@ def crux_ingest(ctx: JobContext) -> None:
         if row_no <= start:
             continue
         last = row_no
+        if bucket <= exclude_top:
+            continue
+        if limit and accepted >= limit:
+            break
         norm, err = try_normalize(origin)
         if not norm:
             ctx.incr(invalid=1)
             continue
+        accepted += 1
+        payload = {"bucket": bucket, "period": period, "country": country or "global"}
+        if requested:
+            payload["requested"] = True  # user chose this range: skip the automatic popularity gate
         batch.append(Discovered(
-            norm=norm, source_type="crux", source_ref=ref, original=origin,
-            payload={"bucket": bucket, "period": period, "country": country or "global"},
+            norm=norm, source_type="crux", source_ref=ref, original=origin, payload=payload,
             priority=datasets.popularity_priority(crux_bucket=bucket),
             popularity=[{"source": "crux", "period": period, "country": (country or "global").upper() if country else "global",
                          "rank_bucket": bucket, "origin": origin, "source_url": url}],
         ))
         if len(batch) >= BATCH:
-            _flush(ctx, batch, last)
+            _flush(ctx, batch, last, accepted=accepted)
             batch = []
-    _flush(ctx, batch, last, finished_rows=last)
+    _flush(ctx, batch, last, finished_rows=last, accepted=accepted)
 
 
 # ------------------------------------------------------------------ Tranco
@@ -110,7 +123,8 @@ def tranco_ingest(ctx: JobContext) -> None:
             continue
         batch.append(Discovered(
             norm=norm, source_type="tranco", source_ref=f"tranco:{list_id}", original=domain,
-            payload={"rank": rank, "list_id": list_id}, priority=datasets.popularity_priority(tranco_rank=rank),
+            payload={"rank": rank, "list_id": list_id, **({"requested": True} if ctx.params.get("requested") else {})},
+            priority=datasets.popularity_priority(tranco_rank=rank),
             popularity=[{"source": "tranco", "period": list_id, "rank": rank, "source_url": url}],
         ))
         if len(batch) >= BATCH:

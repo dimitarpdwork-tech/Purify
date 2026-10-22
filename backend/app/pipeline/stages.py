@@ -64,8 +64,10 @@ def run_qualify(ids: list[int]) -> None:
         sites = db.execute(select(Website.id, Website.host, Website.registrable_domain, Website.excluded, Website.exclusion_reason,
                                   Website.discovery_priority).where(Website.id.in_(ids))).all()
         pops = _popularity_many(db, ids)
+        # websites a user asked for (manual add, imports, or a discovery job the user started with a chosen range)
         manual_ids = set(db.scalars(select(WebsiteSource.website_id).where(
-            WebsiteSource.website_id.in_(ids), WebsiteSource.source_type.in_(("manual", "csv", "legacy")))))
+            WebsiteSource.website_id.in_(ids),
+            (WebsiteSource.source_type.in_(("manual", "csv", "legacy"))) | (WebsiteSource.payload["requested"].astext == "true"))))
         newly_excluded: list[tuple[int, str]] = []
         for wid, host, reg_dom, excluded, ex_reason, prio in sites:
             if excluded:
@@ -83,7 +85,7 @@ def run_qualify(ids: list[int]) -> None:
                            or any(b <= qcfg["max_country_crux_bucket"] for c, b in crux.items() if c != "global"))
             if popular or manual:
                 claims.complete(db, wid, "qualify", "DONE",
-                                {"reason": "manual source" if manual and not popular else "popularity", "crux": crux, "tranco": tranco},
+                                {"reason": "requested by user" if manual and not popular else "popularity", "crux": crux, "tranco": tranco},
                                 next_priority=prio)
             else:
                 claims.complete(db, wid, "qualify", "SKIPPED", {"reason": "insufficient_popularity", "crux": crux, "tranco": tranco},

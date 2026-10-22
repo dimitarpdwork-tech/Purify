@@ -143,3 +143,36 @@ def test_pipeline_progress(client):
     assert q["done"] == 2 and q["rate_per_hour"] >= 2
     assert r["health"]["state"] == "working"
     assert {x["host"] for x in r["recent"]} >= {"example.com", "example.org"}
+
+
+def test_crux_range_and_limit(clean_db, tmp_path, monkeypatch):
+    """exclude_top + limit select a band range; user-requested sites pass the popularity gate."""
+    import gzip
+
+    from sqlalchemy import select
+
+    from app.core.db import session_scope
+    from app.discovery import datasets
+    from app.jobs.base import create_job, run_job
+    from app.models import StageStatus, Website
+    from app.pipeline.claims import claim
+    from app.pipeline.stages import run_qualify
+
+    f = tmp_path / "crux.csv.gz"
+    rows = ["origin,rank"] + [f"https://top{i}.example.com,1000" for i in range(5)] + \
+           [f"https://mid{i}.example.com,50000" for i in range(8)] + [f"https://low{i}.example.com,100000" for i in range(8)] + \
+           [f"https://tail{i}.example.com,500000" for i in range(3)]
+    f.write_bytes(gzip.compress("\n".join(rows).encode()))
+    monkeypatch.setattr(datasets, "fetch_crux", lambda period, country: (f, "https://fixture/crux.csv.gz"))
+    jid = create_job("crux_ingest", {"country": "bg", "period": "202609", "max_bucket": 100000, "exclude_top": 10000, "limit": 10,
+                                     "requested": True})
+    assert run_job(jid) == "DONE"
+    with session_scope() as s:
+        hosts = sorted(s.scalars(select(Website.host)))
+    assert len(hosts) == 10 and not any(h.startswith(("top", "tail")) for h in hosts)
+    assert sum(h.startswith("mid") for h in hosts) == 8  # most popular band first
+    run_qualify(claim("qualify", 100))
+    with session_scope() as s:
+        st = dict(s.execute(select(StageStatus.status, StageStatus.website_id).where(StageStatus.stage == "qualify")).all())
+        statuses = set(s.scalars(select(StageStatus.status).where(StageStatus.stage == "qualify")))
+    assert statuses == {"DONE"}  # BG 50K/100K bands would normally be skipped by the default gate

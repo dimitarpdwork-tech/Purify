@@ -30,6 +30,8 @@ function JobLauncher({ onStarted }: { onStarted: () => void }) {
   const [country, setCountry] = useState("");
   const [bucket, setBucket] = useState(10000);
   const [period, setPeriod] = useState("");
+  const [excludeTop, setExcludeTop] = useState(0);
+  const [limit, setLimit] = useState("");
   const [maxRank, setMaxRank] = useState(100000);
   const [stage, setStage] = useState("adtech");
   const [statuses, setStatuses] = useState<string[]>(["FAILED"]);
@@ -39,6 +41,8 @@ function JobLauncher({ onStarted }: { onStarted: () => void }) {
   const params = (): Record<string, unknown> | null => {
     if (kind === "crux_ingest") {
       const p: Record<string, unknown> = { max_bucket: bucket };
+      if (excludeTop) { if (excludeTop >= bucket) return null; p.exclude_top = excludeTop; }
+      if (limit.trim()) { if (!/^\d+$/.test(limit.trim()) || Number(limit) < 1) return null; p.limit = Number(limit); }
       const c = country.trim().toLowerCase();
       if (c) { if (!/^[a-z]{2}$/.test(c)) return null; p.country = c; }
       if (period.trim()) { if (!/^\d{6}$/.test(period.trim())) return null; p.period = period.trim(); }
@@ -72,8 +76,19 @@ function JobLauncher({ onStarted }: { onStarted: () => void }) {
             <Field label="Country (optional)" hint="ISO2 lowercase, blank for global">
               <Input value={country} maxLength={2} onChange={(e) => setCountry(e.target.value.toLowerCase())} placeholder="us" />
             </Field>
-            <Field label="Max bucket" hint="Popularity band, not visits">
-              <Select value={bucket} onChange={(e) => setBucket(Number(e.target.value))}>{CRUX_BUCKETS.map((b) => <option key={b} value={b}>{cruxLabel(b)}</option>)}</Select>
+            <Field label="Start after" hint="Skip sites already in this band (e.g. Top 10K = start at rank ~10,001)">
+              <Select value={excludeTop} onChange={(e) => setExcludeTop(Number(e.target.value))}>
+                <option value={0}>Start from #1</option>
+                {CRUX_BUCKETS.filter((b) => b < bucket).map((b) => <option key={b} value={b}>{cruxLabel(b)}</option>)}
+              </Select>
+            </Field>
+            <Field label="Up to" hint="Popularity band, not visits">
+              <Select value={bucket} onChange={(e) => { const v = Number(e.target.value); setBucket(v); if (excludeTop >= v) setExcludeTop(0); }}>
+                {CRUX_BUCKETS.map((b) => <option key={b} value={b}>{cruxLabel(b)}</option>)}
+              </Select>
+            </Field>
+            <Field label="Max websites (optional)" hint="Stop after this many; most popular band first">
+              <Input value={limit} inputMode="numeric" onChange={(e) => setLimit(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 2000" />
             </Field>
             <Field label="Period (optional)" hint="YYYYMM, blank for latest">
               <Input value={period} maxLength={6} onChange={(e) => setPeriod(e.target.value.replace(/\D/g, ""))} placeholder="202609" />
