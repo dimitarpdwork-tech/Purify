@@ -4,6 +4,8 @@ Discovers websites, classifies advertising-supported publishers, inspects their 
 (GAM, AdSense, Prebid, APS, SSPs, managed partners), parses ads.txt / sellers.json, and ranks
 evidence-backed monetization opportunities for Purify Digital.
 
+A one-page overview is in [docs/SUMMARY.md](docs/SUMMARY.md).
+
 **Status:** Phases 1–4, without traffic estimates (you research traffic manually). See
 [docs/VERIFICATION.md](docs/VERIFICATION.md) for what was tested, and how. Real-website behaviour
 must be confirmed on the VPS with `scripts/live_validate.py`
